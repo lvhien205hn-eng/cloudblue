@@ -549,7 +549,7 @@ body.pcpad #pc-cur{display:block}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-2.9";                 // web-2.9 (28/11): Thông số không nêu nhà cung cấp đường truyền / bộ nén (khách chỉ thấy "trực tiếp / trung chuyển") · web-2.5: ?mh=… xin cỡ hình nhỏ hơn · web-2.4 (27/11e): báo đã nhận khung ngay khi tới (tab ẩn không làm máy chủ tưởng mạng chậm) + Thông số bộ nén · web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
+const VER = "web-2.10";                // web-2.10 (28/11): máy chủ báo màn máy bị vẽ hỏng → nhắc + nút Khởi động lại · web-2.9 (28/11): Thông số không nêu nhà cung cấp đường truyền / bộ nén (khách chỉ thấy "trực tiếp / trung chuyển") · web-2.5: ?mh=… xin cỡ hình nhỏ hơn · web-2.4 (27/11e): báo đã nhận khung ngay khi tới (tab ẩn không làm máy chủ tưởng mạng chậm) + Thông số bộ nén · web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -1145,6 +1145,17 @@ function netBadge() {
   if (el.textContent !== t) el.textContent = t;
   el.hidden = !t;
 }
+/* web-2.10 (28/11): máy chủ báo màn THẬT của máy đang bị vẽ hỏng (rác màu — lỗi hiển thị trong máy, khởi động lại là hết) → nhắc khách
+   kèm nút Khởi động lại (cùng hộp hỏi như menu). Nhắc 1 lần mỗi lần màn hỏng; hết hỏng rồi hỏng lại thì nhắc lại. Ô nhỏ (tile) không nhắc. */
+function gfxNote(j) {
+  const bad = !!(j && j.gfx);
+  if (!bad) { P.gfxOn = false; return; }
+  if (P.gfxOn || TILE) return;
+  P.gfxOn = true;
+  toast(L("⚠ Màn hình máy đang lỗi hiển thị (hình nhiễu màu). Khởi động lại máy là hết — 1–3 phút, dữ liệu giữ nguyên.",
+          "⚠ The phone's screen isn't drawing correctly (garbled colours). Restarting the phone fixes it — 1–3 minutes, your data is kept."),
+        [L("Khởi động lại", "Restart"), reboot], 30000);
+}
 function waitNote(now) {                   // chờ quá 5 giây → ghi rõ đang đi đường nào, chờ gì
   const cx = P.cx; if (!cx || $("ovl").hidden || P.ovlKind !== "wait" || P.helpOn) return;
   const sec = Math.round((now - cx.openedAt) / 1000); if (sec < 5) return;
@@ -1268,7 +1279,7 @@ function onMsg(buf) {
   if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s && isOwnClip(s)) return; if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
   if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
   if (t === T.ERROR) return onErr(json(p));
-  if (t === T.STATS) { const j = json(p); P.sst = j; P.srv = Object.assign(P.srv || {}, j); return; }
+  if (t === T.STATS) { const j = json(p); P.sst = j; P.srv = Object.assign(P.srv || {}, j); gfxNote(j); return; }
 }
 function onErr(j) {
   const code = j.code || "", msg = j.msg || "Lỗi kết nối.";
