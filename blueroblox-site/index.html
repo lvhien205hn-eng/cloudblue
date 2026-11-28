@@ -703,6 +703,22 @@ html[data-theme] .nbulk>.nacts{background:var(--sunk)}
 .revbox .revin.revnote{width:150px;text-align:left;margin-top:4px;font-size:12px}
 .revbox tr.rev-cur td{background:rgba(233,192,99,.05)}
 .revbox tr.rev-tot td{border-top:2px solid var(--line,rgba(255,255,255,.12))}
+.stg{display:flex;align-items:baseline;gap:4px 12px;flex-wrap:wrap;margin:8px 0 -4px}
+.stg h4{margin:0;font-size:15px;font-weight:800;letter-spacing:-.01em}
+.stg .hint{margin:0}
+.tiles.stx{grid-template-columns:repeat(4,minmax(0,1fr))}
+#st-tiles.stx{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tiles.stx:not(#st-tiles) div:nth-child(2) b{color:inherit}
+.tiles.stx div.hot{border-color:rgba(233,192,99,.4)}
+.tiles.stx div.hot b{color:var(--gold-hi)}
+.rsvt th.num,.rsvt td.num{text-align:right}
+.rsvt td small{display:block;font-size:11.5px;color:var(--muted);font-weight:500}
+.rsvt tr[data-rsvsvc]{cursor:pointer}
+.rsvt tr[data-rsvsvc]:hover td{background:rgba(143,208,255,.06)}
+.rsvt tr.on td{background:rgba(143,208,255,.12)}
+.rsvp button,#rsl-kind button{padding:6px 11px;font-size:13px}
+@media (max-width:900px){.tiles.stx,#st-tiles.stx{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:460px){.tiles.stx,#st-tiles.stx{grid-template-columns:1fr}}
 
 /* ===== CTV + quản lý máy (v6) ===== */
 .ctvchip{border-color:rgba(60,224,176,.45)!important;color:var(--ok)!important}
@@ -3360,8 +3376,25 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
-      <div class="tiles" style="grid-template-columns:repeat(4,1fr)" id="st-tiles"></div>
       <div class="hint" id="st-db" style="margin:0"></div>
+      <div class="stg"><h4>💰 Tiền</h4><span class="hint">không tính tiền của tài khoản admin</span></div>
+      <div class="tiles stx" id="st-tiles"></div>
+      <div class="revbox" id="rsv-box">
+        <div class="revhead"><h3 style="margin:0">📊 Doanh thu theo dịch vụ</h3><div class="upchips rsvp" id="rsv-per" role="group" aria-label="Khoảng thời gian"></div><span class="hint" id="rsv-msg"></span></div>
+        <div class="tbl"><table class="rsvt"><thead><tr><th>Dịch vụ</th><th class="num">🆕 Thuê mới</th><th class="num">🔁 Gia hạn</th><th class="num">⬆️ Nâng cấp · khác</th><th class="num">↩️ Hoàn tiền</th><th class="num">Tổng</th></tr></thead>
+          <tbody id="rsv-tb"><tr><td colspan="6" class="hint" style="text-align:center;padding:14px">Đang tải…</td></tr></tbody></table></div>
+        <div class="revhead"><h3 style="margin:0;font-size:15px">🧾 Từng lần khách trả tiền</h3><div class="upchips" id="rsl-kind" role="group" aria-label="Loại"></div>
+          <label>Dịch vụ <select class="in" id="rsl-svc" aria-label="Lọc theo dịch vụ"></select></label></div>
+        <div class="tbl"><table class="rsvt"><thead><tr><th>Lúc</th><th>Dịch vụ</th><th>Loại</th><th>Khách</th><th>Máy / đơn</th><th class="num">Số ngày</th><th class="num">Tiền</th></tr></thead><tbody id="rsl-tb"></tbody></table></div>
+        <div><button class="btn ghost sm" type="button" id="rsl-more" hidden>Xem thêm</button></div>
+        <div class="hint">Bấm 1 dịch vụ ở bảng trên để chỉ xem dịch vụ đó (bấm lại để bỏ lọc). Tiền = số khách trả sau mã giảm giá. Không tính tiền của tài khoản admin.</div>
+      </div>
+      <div class="stg"><h4>📱 ĐT đám mây</h4></div>
+      <div class="tiles stx" id="st-cp"></div>
+      <div class="stg"><h4>🖥 VPS</h4></div>
+      <div class="tiles stx" id="st-vps"></div>
+      <div class="stg"><h4>🛒 Cửa hàng · khách</h4></div>
+      <div class="tiles stx" id="st-shop"></div>
       <div class="revbox" id="rev-box">
         <div class="revhead"><h3 style="margin:0">📅 Chốt tháng · trừ tiền điện + chi phí → lãi</h3>
           <label>Năm <select class="in" id="rev-year" aria-label="Chọn năm"></select></label>
@@ -3712,6 +3745,18 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
           <span class="hint" id="swl-msg" style="margin:0"></span>
         </div>
         <div class="hint" style="margin-top:4px">Khách được đổi = số lớn hơn giữa <b>tối thiểu</b> và <b>số máy đang thuê × mỗi máy</b>, nhưng <b>không quá tối đa</b>. Mặc định 3 · 1 · 5: khách 1 máy → 3 lần, khách 5 máy trở lên → 5 lần. Khách đang có máy đổi dở (máy cũ chưa xoá xong / máy mới chưa tạo xong) phải đợi xong mới đổi tiếp được. Để trống = mặc định. Admin không bị giới hạn. Cần chạy SQL v39.</div>
+      </div>
+      <div class="gpubox" id="clnbox">
+        <div class="gph"><h3 style="margin:0">🧹 Tự dọn máy kẹt · hết hạn · lâu không mở</h3><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="cln-load">🔎 Xem sổ dọn</button><button class="btn sm" type="button" id="cln-go">🧹 Dọn ngay</button></span></div>
+        <div class="hint" id="cln-msg">Cơ sở dữ liệu tự dọn 5 phút / lần (SQL v71) — bấm Xem sổ dọn để xem máy nào đã được dọn.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          <b style="font-size:13.5px">💤 Máy khách không mở quá</b>
+          <input id="cln-days" class="in" type="number" min="0" max="365" step="1" inputmode="numeric" style="width:76px" placeholder="8" aria-label="Số ngày không mở thì xoá">
+          <span class="hint" style="margin:0">ngày → xoá vĩnh viễn, không hoàn tiền (0 = tắt · để trống = 8)</span>
+          <button class="btn sm" type="button" id="cln-save">Lưu</button><span class="hint" id="cln-smsg" style="margin:0"></span>
+        </div>
+        <div class="tbl" id="cln-tblbox" hidden><table><thead><tr><th>Lúc</th><th>Việc</th><th>Máy</th><th>Khách</th><th>Máy chủ</th><th>Ghi chú</th></tr></thead><tbody id="cln-tb"></tbody></table></div>
+        <div class="hint" style="margin-top:6px">Tự làm, không cần bấm: máy cũ của lần đổi Android còn sót → xoá · đổi Android quá 1 giờ chưa xong → huỷ lệnh, khách bấm 🔁 Thử lại (hạn giữ nguyên) · máy "đang xoá" quá lâu → ghi đã xoá · hết hạn quá 1 ngày chưa gia hạn → xoá · thuê mới quá 30 phút chưa lên → huỷ + hoàn tiền. Thẻ máy của khách báo trước 3 ngày khi sắp quá số ngày không mở. Máy treo game / có người xem không bị tính là "không mở". Máy thật (BlueReal) không bị đụng tới.</div>
       </div>
       <div class="gpubox" id="rnfbox">
         <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
@@ -7810,34 +7855,27 @@ async function loadStats() {
   if (error || !s) { box.innerHTML = `<div class="hint">Chưa tải được (hãy chạy file stats.sql trong Supabase).</div>`; return; }
   $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính tiền của tài khoản admin (nạp / mua / cộng thử)";
   dbCheck();
-  const tile = (b, lab, hot) => `<div${hot ? ' style="border-color:rgba(233,192,99,.4)"' : ""}><b${hot ? ' style="color:var(--gold-hi)"' : ""}>${b}</b><span>${lab}</span></div>`;
+  const tile = (b, lab, hot) => `<div${hot ? ' class="hot"' : ""}><b>${b}</b><span>${lab}</span></div>`, n = v => (+v || 0).toLocaleString("vi-VN");
   const revM = (+s.revenue_month || 0) + (+s.cp_revenue_month || 0);       // SQL v69: ô 1 = doanh thu THÁNG NÀY (cửa hàng + ĐT đám mây) — sang tháng mới về 0, tháng cũ đã chốt
-  box.innerHTML = [
-    `<div style="border-color:rgba(233,192,99,.4)"><b style="color:var(--gold-hi)" id="st-revm">${vnd(revM)}</b><span>Tổng doanh thu tháng này (sang tháng mới về 0 · tháng cũ đã chốt ở dưới)</span></div>`,
+  box.innerHTML = [      // 28/11f: chia nhóm 💰 Tiền · 📊 theo dịch vụ · 📱 ĐT đám mây · 🖥 VPS · 🛒 Cửa hàng — dễ nhìn
+    `<div class="hot"><b id="st-revm">${vnd(revM)}</b><span>Tổng doanh thu tháng này (sang tháng mới về 0 · tháng cũ đã chốt ở dưới)</span></div>`,
     `<div><b id="st-profm">…</b><span>Lãi tháng này (đã trừ tiền điện + chi phí)</span></div>`,
     tile(vnd((+s.revenue_today || 0) + (+s.cp_revenue_today || 0)), "Doanh thu hôm nay"),
-    tile(vnd(s.topup_total), "Tổng đã nạp"),
-    tile(vnd(s.revenue_month), "DT cửa hàng tháng này"),
-    tile(vnd(s.revenue_total), "DT cửa hàng từ trước tới nay"),
-    tile((+s.clone_qty).toLocaleString("vi-VN"), "Clone đã bán"),
-    tile(vnd(s.clone_revenue), "DT clone"),
-    tile((+s.vps_orders).toLocaleString("vi-VN"), "Lượt bán VPS"),
-    tile(vnd(s.vps_revenue), "DT VPS"),
-    tile((+s.vps_active).toLocaleString("vi-VN"), "Máy VPS đang chạy"),
-    tile((+s.vps_expiring).toLocaleString("vi-VN"), "VPS sắp hết hạn"),
-    tile((+s.vps_expired).toLocaleString("vi-VN"), "VPS đã hết hạn"),
-    tile((+s.customers).toLocaleString("vi-VN"), "Khách đăng ký"),
-    tile(vnd(s.balance_total), "Tổng số dư khách"),
-    tile((+s.orders_done).toLocaleString("vi-VN"), "Tổng đơn đã bán"),
+    tile(vnd(s.topup_total), "Tổng khách đã nạp"),
+    tile(vnd(s.balance_total), "Số dư khách còn trong tài khoản"),
+    tile(vnd(s.ref_paid_total), "Hoa hồng giới thiệu đã trả"),
   ].join("");
-  if (s.cp_revenue_total != null) {
-    const n = v => (+v || 0).toLocaleString("vi-VN");
-    box.innerHTML += [
-      tile(vnd(s.cp_revenue_total), "DT ĐT đám mây", 1), tile(vnd(s.cp_revenue_today), "DT ĐT đám mây hôm nay"), tile(vnd(s.cp_revenue_month), "DT ĐT đám mây tháng này"),
-      tile(n(s.cp_active), "ĐT đám mây đang chạy"), tile(n(s.cp_expiring), "ĐT sắp hết hạn (≤ 1 ngày)"), tile(n(s.cp_new) + " / " + n(s.cp_renews), "Lượt thuê mới / gia hạn"),
-      tile(n(s.cp_upgrades) + " / " + n(s.cp_switches), "Nâng cấp / đổi Android"), tile(vnd(s.ref_paid_total), "Hoa hồng giới thiệu đã trả"),
-    ].join("");
-  } else box.innerHTML += `<div class="hint" style="grid-column:1/-1">Doanh thu ĐT đám mây: chạy file SQL v24 trong Supabase để bật.</div>`;
+  const put = (id, h) => { const e = $(id); if (e) e.innerHTML = h; };
+  put("st-cp", s.cp_revenue_total != null ? [
+    tile(vnd(s.cp_revenue_month), "DT tháng này", 1), tile(vnd(s.cp_revenue_today), "DT hôm nay"), tile(vnd(s.cp_revenue_total), "DT từ trước tới nay"),
+    tile(n(s.cp_active), "Máy đang chạy"), tile(n(s.cp_expiring), "Sắp hết hạn (≤ 1 ngày)"), tile(n(s.cp_new) + " / " + n(s.cp_renews), "Lượt thuê mới / gia hạn"),
+    tile(n(s.cp_upgrades) + " / " + n(s.cp_switches), "Nâng cấp / đổi Android"),
+  ].join("") : `<div class="hint" style="grid-column:1/-1">Doanh thu ĐT đám mây: chạy file SQL v24 trong Supabase để bật.</div>`);
+  put("st-vps", [tile(vnd(s.vps_revenue), "DT VPS (đơn cửa hàng)", 1), tile(n(s.vps_orders), "Lượt bán VPS"), tile(n(s.vps_active), "Máy VPS đang chạy"),
+    tile(n(s.vps_expiring), "VPS sắp hết hạn"), tile(n(s.vps_expired), "VPS đã hết hạn")].join(""));
+  put("st-shop", [tile(vnd(s.revenue_month), "DT cửa hàng tháng này", 1), tile(vnd(s.revenue_total), "DT cửa hàng từ trước tới nay"), tile(n(s.orders_done), "Tổng đơn đã bán"),
+    tile(n(s.clone_qty), "Clone đã bán"), tile(vnd(s.clone_revenue), "DT clone"), tile(n(s.customers), "Khách đăng ký")].join(""));
+  try { rsvLoad(); } catch (e) {}
   loadCpSales();
   revLoad();
   $("st-top").innerHTML = (s.top_products || []).length
@@ -7845,6 +7883,71 @@ async function loadStats() {
     : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Chưa có đơn nào.</td></tr>`;
 }
 $("st-reload") && ($("st-reload").onclick = loadStats);
+
+/* ===== 📊 DOANH THU THEO DỊCH VỤ (SQL v71): thuê mới · gia hạn · nâng cấp · hoàn tiền của từng dịch vụ + từng lần khách trả tiền ===== */
+const RSV_SVC = [["cp", "📱 ĐT đám mây"], ["real", "📲 Máy thật"], ["pc", "🖥 VPS GPU"], ["vm", "⚡ VPS NVMe"], ["vps", "💻 VPS khác"], ["shop", "🛒 Cửa hàng"]];
+const RSV_PER = [["today", "Hôm nay"], ["d7", "7 ngày"], ["month", "Tháng này"], ["prev", "Tháng trước"], ["all", "Từ trước tới nay"]];
+const RSV_KIND = { new: "🆕 Thuê mới", renew: "🔁 Gia hạn", upgrade: "⬆️ Nâng cấp", switch: "🤖 Đổi Android", refund: "↩️ Hoàn tiền", other: "Khác" };
+const RSL_KINDS = [["renew", "🔁 Gia hạn"], ["new", "🆕 Thuê mới"], ["upgrade", "⬆️ Nâng cấp"], ["refund", "↩️ Hoàn tiền"], ["", "Tất cả"]];
+let RSV = null, RSV_P = "month";
+const RSL = { svc: "", kind: "renew", rows: [], busy: false, end: false, seq: 0 };
+const rsvMiss = e => /admin_rev_(services|list)|schema cache|does not exist|Could not find/i.test(String((e && e.message) || e || ""));
+const rsvSvcName = k => (RSV_SVC.find(x => x[0] === k) || [k, k])[1];
+async function rsvLoad() {
+  const tb = $("rsv-tb"); if (!tb || !isAdmin()) return;
+  let r; try { r = await sb.rpc("admin_rev_services"); } catch (e) { r = { error: e }; }
+  if (!r || r.error || !r.data) {
+    RSV = null; $("rsv-per").innerHTML = ""; $("rsl-kind").innerHTML = ""; $("rsl-tb").innerHTML = ""; $("rsl-more").hidden = true;
+    tb.innerHTML = `<tr><td colspan="6" class="hint" style="text-align:center;padding:14px">${rsvMiss(r && r.error) ? "Chưa chạy <b>SQL v71</b> — chạy xong bấm Tải lại." : esc(errMsg(r && r.error))}</td></tr>`;
+    return;
+  }
+  RSV = r.data; rsvDraw(); rslLoad(true);
+}
+function rsvDraw() {
+  const tb = $("rsv-tb"); if (!tb || !RSV) return;
+  $("rsv-per").innerHTML = RSV_PER.map(([k, t]) => `<button type="button" data-rsvp="${k}" class="${k === RSV_P ? "on" : ""}">${t}</button>`).join("");
+  const rows = Array.isArray(RSV.rows) ? RSV.rows : [], seen = new Set(rows.map(x => x.svc));
+  const sum = (svc, kinds) => rows.filter(x => x.p === RSV_P && (svc == null || x.svc === svc) && kinds.includes(x.kind))
+    .reduce((o, x) => ({ n: o.n + (+x.n || 0), a: o.a + (+x.amt || 0) }), { n: 0, a: 0 });
+  const cell = v => v.n ? `<b>${vnd(v.a)}</b><small>${v.n.toLocaleString("vi-VN")} lượt</small>` : '<span class="hint">—</span>';
+  const line = (svc, label, cls) => {
+    const t = sum(svc, ["new", "renew", "upgrade", "switch", "other", "refund"]);
+    return `<tr class="${cls || ""}${svc && svc === RSL.svc ? " on" : ""}"${svc ? ` data-rsvsvc="${svc}" title="Bấm để chỉ xem từng lần trả tiền của dịch vụ này"` : ""}><td>${label}</td>`
+      + `<td class="num">${cell(sum(svc, ["new"]))}</td><td class="num">${cell(sum(svc, ["renew"]))}</td><td class="num">${cell(sum(svc, ["upgrade", "switch", "other"]))}</td>`
+      + `<td class="num">${cell(sum(svc, ["refund"]))}</td><td class="num">${t.n ? `<b>${vnd(t.a)}</b>` : '<span class="hint">—</span>'}</td></tr>`;
+  };
+  tb.innerHTML = RSV_SVC.filter(([k]) => k === "cp" || seen.has(k)).map(([k, t]) => line(k, t)).join("") + line(null, "<b>Tổng</b>", "rev-tot");
+  $("rsv-msg").textContent = RSV.at ? "cập nhật " + new Date(RSV.at).toLocaleTimeString("vi-VN") : "";
+}
+async function rslLoad(reset) {
+  const tb = $("rsl-tb"); if (!tb || !isAdmin()) return;
+  if (!reset && (RSL.busy || RSL.end)) return;
+  const seq = ++RSL.seq; RSL.busy = true;
+  $("rsl-kind").innerHTML = RSL_KINDS.map(([k, t]) => `<button type="button" data-rslk="${k}" class="${k === RSL.kind ? "on" : ""}">${t}</button>`).join("");
+  const sel = $("rsl-svc"); if (!sel.options.length) sel.innerHTML = `<option value="">Tất cả dịch vụ</option>` + RSV_SVC.map(([k, t]) => `<option value="${k}">${t}</option>`).join("");
+  sel.value = RSL.svc;
+  document.querySelectorAll("#rsv-tb tr[data-rsvsvc]").forEach(r => r.classList.toggle("on", r.dataset.rsvsvc === RSL.svc));
+  const last = reset ? null : RSL.rows[RSL.rows.length - 1];
+  try {
+    const { data, error } = await sb.rpc("admin_rev_list", { p_svc: RSL.svc || null, p_kind: RSL.kind || null, p_limit: 40, ...(last ? { p_before: last.at } : {}) });
+    if (seq !== RSL.seq) return;                                   // đã đổi bộ lọc trong lúc chờ
+    if (error) { tb.innerHTML = `<tr><td colspan="7" class="hint" style="text-align:center;padding:12px">${rsvMiss(error) ? "Chưa chạy <b>SQL v71</b>." : esc(errMsg(error))}</td></tr>`; $("rsl-more").hidden = true; return; }
+    const got = Array.isArray(data) ? data : [];
+    RSL.rows = reset ? got : RSL.rows.concat(got); RSL.end = got.length < 40;
+    tb.innerHTML = RSL.rows.length ? RSL.rows.map(x => `<tr><td>${new Date(x.at).toLocaleString("vi-VN")}</td><td>${esc(rsvSvcName(x.svc))}</td><td>${esc(RSV_KIND[x.kind] || x.kind || "")}</td>`
+      + `<td>${esc(x.user || "?")}</td><td>${esc(x.item || "")}</td><td class="num">${x.days != null ? +x.days : "—"}</td><td class="num"><b>${vnd(x.amt)}</b></td></tr>`).join("")
+      : `<tr><td colspan="7" class="hint" style="text-align:center;padding:12px">Chưa có lần trả tiền nào${RSL.kind ? " loại này" : ""}${RSL.svc ? " ở " + esc(rsvSvcName(RSL.svc)) : ""}.</td></tr>`;
+    $("rsl-more").hidden = RSL.end;
+  } finally { if (seq === RSL.seq) RSL.busy = false; }
+}
+document.addEventListener("click", e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const p = t.closest("[data-rsvp]"); if (p) { RSV_P = p.dataset.rsvp; rsvDraw(); return; }
+  const k = t.closest("[data-rslk]"); if (k) { RSL.kind = k.dataset.rslk; rslLoad(true); return; }
+  const r = t.closest("#rsv-tb tr[data-rsvsvc]"); if (r) { RSL.svc = RSL.svc === r.dataset.rsvsvc ? "" : r.dataset.rsvsvc; rslLoad(true); }
+});
+$("rsl-svc") && ($("rsl-svc").onchange = () => { RSL.svc = $("rsl-svc").value; rslLoad(true); });
+$("rsl-more") && ($("rsl-more").onclick = () => busy($("rsl-more"), () => rslLoad(false)));
 
 /* ===== 📅 CHỐT THÁNG (SQL v69): doanh thu từng tháng (tháng cũ tự chốt) · chốt năm · tiền điện = số điện × giá điện · chi phí khác · lãi ===== */
 let REV = null;
@@ -9826,6 +9929,16 @@ function revLine(ids, lead) {                           // "💰 T11 (đang tín
   return `<span class="nrevs">💰 ${lead ? esc(lead) + " — " : ""}${parts.join(" · ")}${ms.some(m => m.est) ? ` <span title="Phần trước lúc bật tính doanh thu: coi máy khách nằm ở máy chủ hiện tại từ lúc tạo tới lúc huỷ">(* có phần ước tính)</span>` : ""}`
     + (cashOn ? `<span class="nrevk">💰 doanh thu = tiền khách trả rải đều theo ngày máy chạy · 💵 đã thu = tiền khách thực trả trong tháng (trừ hoàn tiền)</span>` : "") + `</span>`;
 }
+/* 28/11f: đồng hồ Windows của máy chủ lệch (máy chủ 28/11f đo + tự sửa, SQL v71 đo khi máy chủ cũ gửi giờ) · Windows chưa có WGC (bản < 1903, vd 1511)
+   → hình lấy thẳng từ Android, tốn CPU hơn · điểm lag dùng khi chia máy mới (máy chủ cũ / bận nhận ít hơn) */
+const fmtSkew = v => { const a = Math.abs(v); return (a >= 3600 ? Math.round(a / 360) / 10 + " giờ" : a >= 120 ? Math.round(a / 60) + " phút" : Math.round(a) + " giây") + (v > 0 ? " (chạy nhanh)" : " (chạy chậm)"); };
+function nodeWarn(m) {
+  const o = [], sk = m.clock_off_s != null ? +m.clock_off_s : m.clock_skew_s != null ? +m.clock_skew_s : 0, b = +m.win_build || 0;
+  if (Math.abs(sk) >= 60) o.push(`<span style="color:var(--gold-hi)" title="Đồng hồ Windows của máy chủ lệch so với giờ thật. Máy chủ bản 28/11f tự đồng bộ lại (w32tm); web tính giờ theo cơ sở dữ liệu nên không còn báo Mất kết nối nhầm.">🕒 Đồng hồ lệch ${fmtSkew(sk)}</span>`);
+  if (b && b < 18362) o.push(`<span style="color:var(--gold-hi)" title="Windows bản ${b} chưa có Windows Graphics Capture → hình lấy thẳng từ Android, tốn CPU hơn, dễ giật hơn. Máy mới được ưu tiên giao sang máy chủ khác. Nên cài Windows 10 22H2 khi có dịp.">🐢 Windows ${b} · không WGC</span>`);
+  if (+m.lag_pen >= 10) o.push(`<span title="Điểm lag khi chia máy mới (càng cao càng ít được giao): Windows không WGC +25 · CPU / card đồ hoạ đang bận">⚖️ Điểm lag +${Math.round(+m.lag_pen)}</span>`);
+  return o.join("");
+}
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
   const SL = srvLink(), have = new Set(NODES.map(n => n.id));
@@ -9874,7 +9987,7 @@ function renderNodes() {
         ${d ? nRow(`Ổ cứng chung · ngừng nhận ≥ ${dskStop}%`, `${d.used}/${d.total} GB`, d.used / d.total * 100, dskStop, `Ổ cứng dùng chung cho mọi máy khách — ngừng nhận máy mới khi ≥ ${dskStop}%`) : ""}
         <div class="nf"><span>📱 ${n.phones || 0} máy${m.running != null ? " (" + m.running + " đang chạy)" : ""}</span>
           ${m.cpu_temp ? `<span>🌡️ CPU ${Math.round(m.cpu_temp)}°C</span>` : ""}${m.load ? `<span>Tải ${m.load[0]}</span>` : ""}${m.uptime_h != null ? `<span>Bật ${m.uptime_h >= 48 ? Math.round(m.uptime_h / 24) + " ngày" : m.uptime_h + " giờ"}</span>` : ""}
-          <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span></div>
+          <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span>${nodeWarn(m)}</div>
       </div>
       <button class="btn ghost sm nset" type="button" data-nset="${nid}" aria-expanded="${open}" aria-controls="nact-${nid}" title="${L ? "Điều khiển từ xa, đ" : "Đ"}ổi tên, ngừng / nhận máy, quản lý, khởi động lại, xoá sạch máy">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
       <div class="nacts" id="nact-${nid}"${open ? "" : " hidden"}>
@@ -11841,6 +11954,43 @@ $("swl-save") && ($("swl-save").onclick = () => busy($("swl-save"), async () => 
   if (SITE !== before) { SWL_F.forEach(([id]) => { delete $(id).dataset.dirty; }); swlFill(true); $("swl-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
 }));
 { const _lc32 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc32.apply(this, arguments); try { swlFill(); } catch (e) {} return r; }; }
+
+/* ===== 🧹 TỰ DỌN MÁY (SQL v71): sổ dọn · Dọn ngay · số ngày không mở thì xoá vĩnh viễn (settings.data.idle_purge_days) ===== */
+const CLN_KIND = { switch_old_live: "Máy cũ đổi Android còn chạy → xoá", switch_old: "Máy cũ đổi Android xoá chậm → ghi đã xoá", cancel_stuck: "Đang xoá quá lâu → ghi đã xoá",
+  expired: "Hết hạn quá 1 ngày → xoá", released: "Máy cũ đã xoá → tạo máy mới", switch_stuck: "Đổi Android quá lâu → huỷ lệnh", idle_purge: "💤 Lâu không mở → xoá vĩnh viễn" };
+function clnFill(force) { const el = $("cln-days"); if (!el || (el.dataset.dirty && !force)) return; el.value = cpIdleDays(); }
+async function clnLoad() {
+  const box = $("cln-tblbox"), tb = $("cln-tb"), msg = $("cln-msg"); if (!tb || !isAdmin()) return;
+  let r; try { r = await sb.rpc("admin_clean_log", { p_limit: 80 }); } catch (e) { r = { error: e }; }
+  if (!r || r.error) {
+    msg.innerHTML = /admin_clean_log|schema cache|does not exist|Could not find/i.test(String((r && r.error && r.error.message) || "")) ? "Chưa chạy <b>SQL v71</b> (tự dọn máy)." : esc(errMsg(r && r.error));
+    box.hidden = true; return;
+  }
+  const d = r.data || {}, rows = Array.isArray(d.rows) ? d.rows : [], day = d.day || {}, dn = Object.values(day).reduce((a, b) => a + (+b || 0), 0);
+  msg.innerHTML = (d.cron ? "✅ Cơ sở dữ liệu tự dọn 5 phút / lần" : "⚠️ Supabase không có lịch tự chạy — máy chủ (bản 28/11f) tự gọi dọn 5 phút / lần")
+    + ` · 24 giờ qua dọn <b>${dn}</b> máy` + (dn ? " (" + Object.entries(day).map(([k, v]) => esc((CLN_KIND[k] || k).replace(/ →.*$/, "")) + " " + v).join(" · ") + ")" : "")
+    + ` · ${+d.idle_days ? `máy không mở quá <b>${+d.idle_days}</b> ngày bị xoá` : "đang <b>tắt</b> xoá máy lâu không mở"}`;
+  tb.innerHTML = rows.length ? rows.map(x => `<tr><td>${new Date(x.at).toLocaleString("vi-VN")}</td><td>${esc(CLN_KIND[x.kind] || x.kind || "")}</td><td>${esc(x.name || String(x.phone_id || "").slice(0, 8))}</td>`
+    + `<td>${esc(x.username || "—")}</td><td>${esc(x.node ? (cpSrvName(x.node) || x.node) : "—")}</td><td class="hint">${esc(x.info || "")}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="hint" style="text-align:center;padding:12px">Chưa có máy nào phải dọn.</td></tr>`;
+  box.hidden = false;
+}
+$("cln-load") && ($("cln-load").onclick = () => busy($("cln-load"), clnLoad));
+$("cln-go") && ($("cln-go").onclick = () => busy($("cln-go"), async () => {
+  const { data, error } = await sb.rpc("admin_auto_clean");
+  if (error) return toast(/admin_auto_clean|schema cache|Could not find/i.test(error.message || "") ? "Chưa chạy SQL v71." : errMsg(error), 1);
+  toast(+(data && data.total) ? `Đã dọn ${+data.total} máy.` : "Không có máy nào cần dọn."); await clnLoad();
+}));
+$("cln-days") && ($("cln-days").oninput = () => { $("cln-days").dataset.dirty = "1"; });
+$("cln-save") && ($("cln-save").onclick = () => busy($("cln-save"), async () => {
+  const v = $("cln-days").value.trim();
+  if (v && (!/^\d{1,3}$/.test(v) || +v > 365)) return toast("Nhập số ngày từ 0 đến 365 (0 = tắt, để trống = 8).", 1);
+  try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}   // đọc lại trước khi ghi → không đè thay đổi khác
+  const before = SITE;
+  await saveSettings({ idle_purge_days: v }, null, v === "0" ? "Đã tắt xoá máy lâu không mở." : `Đã lưu — máy khách không mở quá ${v || 8} ngày sẽ bị xoá vĩnh viễn (báo trước 3 ngày).`);
+  if (SITE !== before) { delete $("cln-days").dataset.dirty; clnFill(true); $("cln-smsg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
+}));
+SUB_HOOK["cloud:tools"] = (f => () => { try { f && f(); } catch (e) {} try { clnFill(); clnLoad(); } catch (e) {} })(SUB_HOOK["cloud:tools"]);
 
 /* ===== 🛡️ BẢO MẬT (SQL v29): bot gác · quét gian lận · nhật ký tiền · ban / xoá · nạp tiền tìm kiếm + tiền về chưa khớp · tiền khách ở bảng máy ===== */
 const V29_MISS = e => /admin_(topup|bank|user|fraud|money|ban|sec|blue_hold)|sec_watch|sec_alerts|function .* does not exist|Could not find the function/i.test((e && e.message) || "");
