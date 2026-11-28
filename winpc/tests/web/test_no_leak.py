@@ -59,7 +59,7 @@ ck("lỗi tải bộ giải mã phần mềm không nêu tên thư viện", "kh�
 ck("dòng cbvideo / bộ nén Android chỉ hiện khi có dữ liệu admin (ss.cbs / ss.efps)",
    "(ss && ss.cbs ?" in play and "(ss && ss.efps != null ?" in play)
 ck("câu lỗi mới của máy chủ có bản EN", "Máy chủ chưa lấy được hình của máy này — thử mở lại" in play)
-ck("bản web-2.9", 'const VER = "web-2.9"' in play)
+ck("bản web-2.9 trở lên", bool(re.search(r'const VER = "web-2\.(9|[1-9]\d)"', play)))
 
 print("2. Trang điều khiển cũ (phone.html) + trang chính (index.html)")
 ph = rd("blueroblox-site/phone.html")
@@ -99,6 +99,22 @@ blk = blk[:blk.index("self.link.send_nowait(S_STATS")]
 ck("S_STATS: ctl / efps / rs / rk / dr / a9 / kq / cbs nằm trong 'if self._adm()'",
    all(f'st["{k}"]' in blk for k in ("ctl", "efps", "rs", "rk", "dr", "a9", "kq", "cbs")))
 ck("_adm() dựa trên me['admin'] (đã qua is_admin + mã 2 bước)", 'return bool((self.me or {}).get("admin"))' in bs)
+
+print("6. 28/11b — màn máy bị vẽ hỏng: mọi ứng dụng nhắc khách + nút Khởi động lại (không nêu tên giả lập)")
+GV = re.compile(r"giả lập|MuMu|emulator|GPU|card", re.I)
+gn = play[play.index("function gfxNote(j)"):]; gn = gn[:gn.index("\n}\n") + 3]
+ck("web: S_STATS gọi gfxNote → toast có nút Khởi động lại (reboot, có hộp hỏi), ô nhỏ không nhắc",
+   "P.srv = Object.assign(P.srv || {}, j); gfxNote(j); return;" in play and "[L(\"Khởi động lại\", \"Restart\"), reboot], 30000)" in gn and "TILE" in gn)
+ck("web: câu nhắc không nêu giả lập / card", not GV.search(" ".join(js_strings(gn))), js_strings(gn))
+ck("web-2.10", 'const VER = "web-2.10"' in play)
+ck("app PC: stats gfx → lời nhắc bấm được (_gfx_click → hỏi lại → _fix_reboot)", 'g = bool(d.get("gfx"))' in bpc and "30, self._gfx_click)" in bpc
+   and 'self._say("Bấm vào đây lần nữa để KHỞI ĐỘNG LẠI máy' in bpc and "10, self._fix_reboot)" in bpc)
+ck("app PC: 2 câu nhắc có bản EN", E.tr("Bấm vào đây lần nữa để KHỞI ĐỘNG LẠI máy — khoảng 1–2 phút. App đang mở trong máy sẽ tắt, dữ liệu vẫn giữ nguyên.").startswith("Click here again")
+   and E.tr("⚠ Màn hình máy đang lỗi hiển thị (hình nhiễu màu). Bấm vào đây để khởi động lại máy là hết — 1–2 phút, dữ liệu giữ nguyên.").startswith("⚠ The phone's screen"))
+ck("app Android: onStats gfx → gfxAsk (hỏi, Khởi động lại → fixReboot)", 'server.optInt("gfx", 0) == 1' in ca and "private void gfxAsk()" in ca
+   and 'Ui.L("Khởi động lại", "Restart"), this::fixReboot);' in ca[ca.index("private void gfxAsk()"):ca.index("private void fixAsk()")])
+st_blk = bs[bs.index('st = {"fps": round((self.sent - s0) / dt, 1)'):bs.index("if self._adm():                                        # 28/11a")]
+ck("máy chủ: gfx gửi cho MỌI phiên (lời nhắc), ngoài khối chỉ-admin", 'if self.gfx: st["gfx"] = 1' in st_blk)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
