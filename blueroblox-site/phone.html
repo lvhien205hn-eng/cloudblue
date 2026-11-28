@@ -749,7 +749,7 @@ async function showClip(text) {
   if (await copyText(text)) { $("clipsm").textContent = L("✓ Đã copy về máy bạn — dán ở đâu cũng được", "✓ Copied to your device — paste it anywhere"); }
   showClip.t = setTimeout(() => { $("clipbar").hidden = true; }, asked ? 12000 : 8000);
 }
-$("clipcp").onclick = async () => { if (await copyText(clipLast)) { $("clipsm").textContent = L("✓ Đã copy về máy bạn", "✓ Copied to your device"); } else ask({ title: L("Chữ từ máy ảo", "Text from the cloud phone"), desc: L("Nhấn giữ để chọn rồi Copy.", "Press and hold to select, then Copy."), body: `<textarea class="in cliptxt" readonly>${esc(clipLast)}</textarea>`, noOk: true, onOk: () => true }); };
+$("clipcp").onclick = async () => { if (await copyText(clipLast)) { $("clipsm").textContent = L("✓ Đã copy về máy bạn", "✓ Copied to your device"); } else ask({ title: L("Chữ từ máy", "Text from the cloud phone"), desc: L("Nhấn giữ để chọn rồi Copy.", "Press and hold to select, then Copy."), body: `<textarea class="in cliptxt" readonly>${esc(clipLast)}</textarea>`, noOk: true, onOk: () => true }); };
 $("clipx").onclick = () => { $("clipbar").hidden = true; };
 async function pasteToPhone(t) {
   if (!cur) return false;
