@@ -14,6 +14,34 @@
 # =====================================================================
 import argparse, atexit, contextlib, ctypes, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, time
 
+def _ssl_ca_extra():
+    """28/11f · Windows cũ (10 1511 Lite): kho chứng chỉ gốc của Windows có thể thiếu → Python báo CERTIFICATE_VERIFY_FAILED khi tải cpsu / cbwp.apk /
+       … từ GitHub. Nạp THÊM bộ chứng chỉ gốc Mozilla có sẵn trên máy (certifi / bản trong pip / CloudBlue PC) — chỉ thêm, không bớt."""
+    if os.name != "nt": return
+    try:
+        import ssl
+        if getattr(ssl, "_cb_extra", None) is not None: return
+        cands = [os.environ.get("SSL_CERT_FILE") or "", r"C:\CloudBluePC\os\cacert.pem"]
+        for mod in ("certifi", "pip._vendor.certifi"):
+            try: cands.append(__import__(mod, fromlist=["where"]).where())
+            except Exception: pass
+        extra = [x for x in dict.fromkeys(cands) if x and os.path.isfile(x)]
+        ssl._cb_extra = extra
+        if not extra: return
+        base, keep = ssl._create_default_https_context, {}
+        def ctx(*a, **k):
+            if a or k or "c" not in keep:
+                c = base(*a, **k)
+                for x in extra:
+                    try: c.load_verify_locations(cafile=x)
+                    except Exception: pass
+                if a or k: return c
+                keep["c"] = c
+            return keep["c"]
+        ssl._create_default_https_context = ctx
+    except Exception: pass
+_ssl_ca_extra()
+
 HOME = os.environ.get("BLUE_HOME") or os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HOME, "redroid", "phones.json")
 CONF_F = os.path.join(HOME, "cloudphone.conf")
@@ -911,7 +939,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11n"           # 27/11n: 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC giữ nguyên dữ liệu (moveout / moveset / movedrop / moveback / moveabort, create --nostart; máy đang chuyển đi không bật lại được) · 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "28/11f"           # 28/11f: 🧹 dondep --mocoi (máy cp_… mồ côi + máy mất tên không rõ của ai, đã tắt lâu) · dòng web tạo lỗi / hoàn tiền = máy thừa · 🖼 Android 13+ ảnh nền bằng app trợ giúp cbwp.apk (không cần root) · 27/11n: 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC giữ nguyên dữ liệu (moveout / moveset / movedrop / moveback / moveabort, create --nostart; máy đang chuyển đi không bật lại được) · 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -1627,12 +1655,89 @@ def wp_ver():
         if _WPV.get("k") != k: _WPV.update(k=k, v=hashlib.md5(open(WP, "rb").read()).hexdigest()[:12])
         return _WPV["v"]
     except OSError: return "0"
+# 28/11f · ẢNH NỀN ANDROID 13+ (user 28/11 14:11: máy Android 15 hiện ảnh nền mặc định của MuMu, không có ảnh CloudBlue). MuMu Android 15 bật
+#   root bằng KernelSU — lệnh su bị GIẤU với adb shell → cách chép file ảnh nền bằng su không chạy. Nay: cài app trợ giúp cbwp.apk (vn.cloudblue.wp,
+#   quyền SET_WALLPAPER như mọi app ảnh nền, không biểu tượng — nguồn .github/wp-check, thử trên máy ảo Android 12 / 13 / 15 trong CI) → chép ảnh
+#   vào thư mục của app → app đặt ảnh nền bằng WallpaperManager (Android tự vẽ lại NGAY, không khởi động lại giao diện, không cần root) → GỠ app.
+#   Dấu /data/local/tmp/.br_wp2 = "<mã ảnh> <id ảnh nền Android>": ảnh CloudBlue bản mới chỉ thay khi ảnh nền hiện tại vẫn là ảnh CloudBlue lần trước
+#   (cùng id) — khách đã tự đổi ảnh nền thì giữ. Android ≤ 12 giữ cách cũ (đang chạy tốt). App lỗi / chưa có file → cách cũ. WALLPAPER_APP=0 = tắt.
+WPA_FILE = ("cbwp.apk", "a0fde7a1db4ec9e30f13c5ba810ef1e7")                                # md5 ghim: file lạ / sai bản không bao giờ cài vào máy khách
+WPA_PKG = "vn.cloudblue.wp"
+WPA_SVC = WPA_PKG + "/.Svc"
+WPA_EXT = f"/sdcard/Android/data/{WPA_PKG}/files"
+def _wpa_local():
+    """windows/cbwp.apk trên máy chủ (tải từ GitHub nếu thiếu / sai md5). None = chưa dùng được."""
+    import urllib.request
+    fn, want = WPA_FILE
+    if len(want) != 32: return None
+    fp = os.path.join(HOME, "redroid", fn)
+    if _fmd5(fp) == want: return fp
+    for url, hdr in ((CPSU_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                     (CPSU_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=90) as r: d = r.read()
+            if hashlib.md5(d).hexdigest() == want:
+                os.makedirs(os.path.dirname(fp), exist_ok=True)
+                with open(fp + ".tmp", "wb") as f: f.write(d)
+                os.replace(fp + ".tmp", fp); return fp
+        except Exception: pass
+    return None
+def _wp_by_app(name, s_, ver, force=False):
+    """Đặt ảnh nền bằng app trợ giúp. True = vừa đặt · False = không cần / giữ ảnh của khách · None = không làm được (dùng cách cũ)."""
+    o = (adb("-s", s_, "shell", "cat /data/local/tmp/.br_wp2 2>/dev/null", timeout=15).stdout or "").split()
+    have_ver = o[0] if o else ""; have_id = o[1] if len(o) > 1 and o[1].isdigit() else ""
+    if not force and have_ver == ver: return False
+    if_id = None
+    if not force and have_ver:                                # đã có ảnh CloudBlue bản cũ → chỉ thay khi khách chưa tự đổi ảnh nền
+        if not have_id:
+            adb("-s", s_, "shell", f"echo '{ver} -' > /data/local/tmp/.br_wp2", timeout=15); return False
+        if_id = int(have_id)
+    apk = _wpa_local()
+    if not apk: return None
+    tmp = "/data/local/tmp/cbwp.apk"
+    adb("-s", s_, "push", apk, tmp, timeout=120)
+    io = adb("-s", s_, "shell", f"pm install -r --user 0 {tmp} 2>&1", timeout=180).stdout or ""
+    if "Success" not in io:
+        adb("-s", s_, "shell", f"pm uninstall {WPA_PKG} >/dev/null 2>&1", timeout=60)
+        io = adb("-s", s_, "shell", f"pm install -r --user 0 {tmp} 2>&1", timeout=180).stdout or ""
+    adb("-s", s_, "shell", f"rm -f {tmp}", timeout=15)
+    if "Success" not in io:
+        print(f"   ({name}: chưa cài được app ảnh nền: {io.strip()[-120:]} — dùng cách cũ)", flush=True); return None
+    res = ""
+    try:
+        adb("-s", s_, "shell", f"mkdir -p {WPA_EXT}; rm -f {WPA_EXT}/res.txt {WPA_EXT}/wp.png", timeout=30)
+        adb("-s", s_, "push", WP, f"{WPA_EXT}/wp.png", timeout=120)
+        adb("-s", s_, "shell", f"am start-foreground-service --user 0 -n {WPA_SVC}" + (f" --ei if_id {if_id}" if if_id is not None else "") + " >/dev/null 2>&1",
+            timeout=30)
+        for _ in range(60):
+            res = (adb("-s", s_, "shell", f"cat {WPA_EXT}/res.txt 2>/dev/null", timeout=15).stdout or "").strip()
+            if res: break
+            time.sleep(0.5)
+    finally:
+        adb("-s", s_, "shell", f"pm uninstall {WPA_PKG} >/dev/null 2>&1", timeout=60)       # gỡ ngay — ảnh nền vẫn giữ
+    w = res.split()
+    if w[:1] == ["OK"] and len(w) > 1 and w[1].isdigit():
+        adb("-s", s_, "shell", f"echo '{ver} {w[1]}' > /data/local/tmp/.br_wp2", timeout=15)
+        print(f"   🖼 {name}: đã đặt ảnh nền CloudBlue (Android 13+, không khởi động lại giao diện)", flush=True); return True
+    if w[:1] == ["SKIP"]:
+        adb("-s", s_, "shell", f"echo '{ver} -' > /data/local/tmp/.br_wp2", timeout=15)
+        print(f"   🖼 {name}: khách đã tự đổi ảnh nền → giữ ảnh của khách", flush=True); return False
+    print(f"   ({name}: app ảnh nền chưa đặt được: {res[:120] or 'không trả lời'} — dùng cách cũ)", flush=True)
+    return None
+
 def set_wallpaper(name, port, force=False):
     """Ảnh nền CloudBlue cho máy: chép thẳng vào file ảnh nền của Android (cần root) rồi khởi động lại giao diện ~30 giây.
        Mỗi máy chỉ đặt 1 lần cho mỗi phiên bản ảnh. Ra ảnh mới → máy đang dùng ảnh nền cũ của mình được chép sẵn ảnh mới,
-       KHÔNG khởi động lại (khách không bị gián đoạn) — ảnh mới hiện từ lần khởi động sau. Khách đã TỰ ĐỔI ảnh nền → giữ ảnh của khách."""
+       KHÔNG khởi động lại (khách không bị gián đoạn) — ảnh mới hiện từ lần khởi động sau. Khách đã TỰ ĐỔI ảnh nền → giữ ảnh của khách.
+       28/11f: Android 13+ → app trợ giúp cbwp.apk (xem _wp_by_app), lỗi mới về cách này."""
     if CONF.get("WALLPAPER", "1") != "1" or not os.path.isfile(WP): return False
     s_ = f"127.0.0.1:{port}"; ver = wp_ver(); quiet = False
+    if CONF.get("WALLPAPER_APP", "1") == "1":
+        try: sdk = int((adb("-s", s_, "shell", "getprop ro.build.version.sdk", timeout=15).stdout or "0").strip() or 0)
+        except (ValueError, AttributeError): sdk = 0
+        if sdk >= 33:
+            r = _wp_by_app(name, s_, ver, force)
+            if r is not None: return r
     if not force:
         o = adb("-s", s_, "shell", "[ -f /data/local/tmp/.br_wp ] && echo \"Y:$(cat /data/local/tmp/.br_wp)\"", timeout=15).stdout or ""
         if "Y:" in o:
@@ -2547,7 +2652,7 @@ def _vm_born(i):
     d = _vm_dir(i)
     try: return datetime.datetime.fromtimestamp(os.path.getctime(d)).astimezone() if d else None
     except OSError: return None
-def _lost_scan(v, st):
+def _lost_scan(v, st, force=False):
     """17/11f — máy MẤT TÊN còn sót: máy MuMu mang tên mặc định ("Android Device-N"), không phải máy gốc #0. Hỏi web theo CỔNG của ô đó
        (cổng adb = 16384 + 32 × số máy; máy khách nào từng nằm ở ô đó đều có dòng trên web):
          · còn dòng đang thuê / đang tạo / đang huỷ, hoặc máy chủ còn ghi máy khách ở cổng đó → máy mất tên của khách ĐANG THUÊ: giữ (chạy
@@ -2592,6 +2697,10 @@ def _lost_scan(v, st):
             print(f"· {nm:<18} #{i} cổng {port} · máy MẤT TÊN của khách đang thuê ({(live[0].get('container') if live else mine.get(port)) or '?'})"
                   " — giữ nguyên; đặt lại tên:  python phonectl.py nhanlai", flush=True); continue
         if not rr:
+            born = _vm_born(i)
+            if force and not x["running"] and born is not None and (now() - born).total_seconds() >= LOST_ORPHAN_H * 3600:   # 28/11f --mocoi
+                lost.append((i, nm, port, "không rõ của ai"))
+                print(f"✗ {nm:<18} #{i} cổng {port} · tắt · máy MẤT TÊN không có trên web, tạo {fmt(born)} (≥ {LOST_ORPHAN_H:g} giờ) — máy mồ côi, xoá", flush=True); continue
             unk += 1; print(f"· {nm:<18} #{i} cổng {port} · {'đang chạy' if x['running'] else 'tắt'} · KHÔNG CÓ TRÊN WEB (máy tạo tay / tạo dở) — không tự xoá", flush=True); continue
         last = None
         for r in rr:
@@ -2605,6 +2714,10 @@ def _lost_scan(v, st):
         elif last is None or born is None: why = "không kiểm được ngày tạo máy ảo / ngày huỷ"
         elif (now() - last[0]).total_seconds() < LOST_MIN_AGE: why = "khách vừa huỷ chưa quá 10 phút"
         elif born >= last[0] - datetime.timedelta(seconds=60): why = "máy ảo được tạo SAU lúc khách ở ô này huỷ (máy khác, không phải máy của khách đó)"
+        if why.startswith("máy ảo được tạo SAU") and force and not x["running"] and born is not None \
+           and (now() - born).total_seconds() >= LOST_ORPHAN_H * 3600:                                  # 28/11f --mocoi
+            lost.append((i, nm, port, "không rõ của ai"))
+            print(f"✗ {nm:<18} #{i} cổng {port} · tắt · máy MẤT TÊN ({why}), tạo {fmt(born)} (≥ {LOST_ORPHAN_H:g} giờ, không ai thuê ở ô này) — máy mồ côi, xoá", flush=True); continue
         if why:
             unk += 1; print(f"· {nm:<18} #{i} cổng {port} · web: đã huỷ ({last[1].get('container') if last else '?'}) nhưng {why} — không tự xoá", flush=True); continue
         lost.append((i, nm, port, str(last[1].get("container") or "?")))
@@ -2628,6 +2741,37 @@ def _kill_lost(i, nm):
             v2 = vms_sure()
             return bool(v2) and i not in v2
     except RuntimeError: return False
+# 28/11f (user 28/11 14:03 "tự check những máy kẹt, máy hết hạn, máy khách không có tên … tự ép buộc xoá vĩnh viễn"):
+#   · dòng web "tạo lỗi" (error) / "hoàn tiền" (refunded) đã yên ≥ 30 phút = máy CHƯA TỪNG giao khách (đổi Android quá 1 giờ bị huỷ lệnh,
+#     tạo lỗi → hoàn tiền) → máy ảo còn sót = máy thừa, xoá như máy đã huỷ (khách bấm Thử lại thì máy chủ tạo máy mới)
+#   · --mocoi: máy cp_… KHÔNG CÒN DÒNG NÀO trên web (tìm cả theo mã đơn — máy đang tạo dở chưa ghi tên máy lên web vẫn thấy), đang TẮT, tạo đã
+#     ≥ ORPHAN_H giờ (2) → xoá · máy MẤT TÊN ("Android Device-N") không rõ của ai, đang TẮT, tạo đã ≥ LOST_ORPHAN_H giờ (24) → xoá.
+#     Máy đang chạy / máy gốc #0 / máy mẫu tpl_… / máy MEMU_TEMPLATE không bao giờ bị đụng.
+DEAD_LATE = ("error", "refunded", "failed")
+try: ORPHAN_H = max(0.5, float(CONF.get("ORPHAN_H", "2") or 2))
+except (TypeError, ValueError): ORPHAN_H = 2.0
+try: LOST_ORPHAN_H = max(2.0, float(CONF.get("LOST_ORPHAN_H", "24") or 24))
+except (TypeError, ValueError): LOST_ORPHAN_H = 24.0
+_CP_ID_RX = re.compile(r"^cp_([0-9a-f]{10})$")
+def _row_dead(r):
+    """Dòng web của máy đã hết dùng: đã huỷ · tạo lỗi / hoàn tiền mà đã yên ≥ 30 phút."""
+    st_ = (r or {}).get("status") or ""
+    if st_ == "cancelled": return True
+    if st_ in DEAD_LATE:
+        try: return (now() - parse_dt(r.get("updated_at"))).total_seconds() >= 1800
+        except Exception: return False
+    return False
+def _rows_by_cname(n):
+    """Dòng web theo MÃ ĐƠN trong tên máy (cp_ + 10 ký tự đầu của mã) — máy đang tạo dở chưa ghi tên máy lên web vẫn tìm được."""
+    m = _CP_ID_RX.match(str(n or ""))
+    if not m: return None
+    h = m.group(1)
+    lo, hi = f"{h[:8]}-{h[8:]}00-0000-0000-000000000000", f"{h[:8]}-{h[8:]}ff-ffff-ffff-ffffffffffff"
+    return _sb_get(f"cloud_phones?select=id,container,status,node,updated_at&id=gte.{lo}&id=lte.{hi}") or []
+def _is_tpl_name(n):
+    n = str(n or "")
+    return n.startswith("tpl_") or n == (CONF.get("MEMU_TEMPLATE") or "\0")
+
 def cmd_dondep(a):
     """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): máy cũ đổi Android, đơn huỷ lúc máy chủ
        tắt, lần xoá trước lỗi… → web vẫn thấy "8 máy · đã cấp 48GB" dù không ai thuê. Gồm cả máy cp_… KHÔNG còn trong danh sách
@@ -2647,24 +2791,38 @@ def cmd_dondep(a):
     try:
         for i in range(0, len(names), 40):
             part = names[i:i + 40]
-            for r in _sb_get("cloud_phones?select=container,status,node&container=in.(" + ",".join(urllib.parse.quote(n) for n in part) + ")") or []:
-                if r.get("status") != "cancelled" or r.get("container") not in db: db[r.get("container")] = r    # trùng tên: ưu tiên dòng còn sống
+            for r in _sb_get("cloud_phones?select=container,status,node,updated_at&container=in.(" + ",".join(urllib.parse.quote(n) for n in part) + ")") or []:
+                if not _row_dead(r) or r.get("container") not in db: db[r.get("container")] = r    # trùng tên: ưu tiên dòng còn sống
     except Exception as e:
         print(f"LỖI: không đọc được web (Supabase): {e} — KHÔNG xoá gì."); sys.exit(4)
-    gone = []; unknown = 0
+    gone = []; unknown = 0; orphan = 0; mocoi = bool(getattr(a, "mocoi", False))
     for n in names:
         r = db.get(n); p = rec(n, st); stray = n in strays
         i = next((k for k, x in v.items() if x["name"] == n), None); run_ = i is not None and bool(v[i]["running"])
+        why = ""
+        if not r and mocoi and not _is_tpl_name(n):                       # 28/11f: tìm theo mã đơn (máy tạo dở chưa ghi tên máy lên web)
+            try: rr_ = _rows_by_cname(n)
+            except Exception as e: rr_ = None; print(f"   (không đọc được web cho {n}: {str(e)[:100]} — không đụng)", flush=True)
+            if rr_:
+                r = next((x for x in rr_ if not _row_dead(x)), None) or rr_[0]
+            elif rr_ is not None and _CP_ID_RX.match(n) and i is not None and not run_:
+                born = _vm_born(i)
+                if born is not None and (now() - born).total_seconds() >= ORPHAN_H * 3600:
+                    r = {"status": "mocoi"}; why = f"máy MỒ CÔI: web không còn dòng nào, tắt, tạo {fmt(born)}"
         stt = (r or {}).get("status") or "KHÔNG CÓ TRÊN WEB"; nd = (r or {}).get("node") or ""
-        dead = bool(r) and stt == "cancelled"
-        if dead: gone.append(n)
+        dead = bool(r) and (_row_dead(r) or stt == "mocoi")
+        if dead and stt in DEAD_LATE and run_:
+            dead = False                                                   # máy tạo lỗi mà ĐANG CHẠY: để luồng tạo máy / lượt sau xử lý
+        if dead:
+            gone.append(n)
+            if stt == "mocoi": orphan += 1
         elif not r: unknown += 1
         cfg = f"RAM {p.get('ram')}GB · {p.get('cpu')} nhân" if p else "máy THỪA (không còn trong danh sách)"
         print(f"{'✗' if dead else '·'} {n:<16} {cfg} · {'đang chạy' if run_ else 'tắt'}"
-              f" · web: {stt}{(' (máy chủ ' + nd + ')') if nd and nd != CONF.get('NODE_ID', '') else ''}", flush=True)
+              f" · web: {why or stt}{(' (máy chủ ' + nd + ')') if nd and nd != CONF.get('NODE_ID', '') else ''}", flush=True)
     keep = len(names) - len(gone)
     print(f"\n{me}: {len(names)} máy khách ({len(strays)} máy thừa) · {len(gone)} máy web đã HUỶ nhưng còn sót trên máy chủ · {keep} máy giữ nguyên")
-    lost, lost_keep, lost_unk = _lost_scan(v, st)                # 17/11f: máy MẤT TÊN ("Android Device-N") của khách đã huỷ → cũng dọn
+    lost, lost_keep, lost_unk = _lost_scan(v, st, force=mocoi)   # 17/11f: máy MẤT TÊN ("Android Device-N") của khách đã huỷ → cũng dọn
     ok = 0
     if gone and not a.xoa:
         print("→ Xoá hẳn các máy ✗ (máy ảo + dữ liệu, KHÔNG khôi phục được):  python phonectl.py dondep --xoa")
@@ -2682,7 +2840,8 @@ def cmd_dondep(a):
             if _kill_lost(i, nm): ok2 += 1; print(f"🗑️  Đã xoá máy mất tên '{nm}' (#{i}, cổng {port}) của khách đã huỷ {who} và toàn bộ dữ liệu.", flush=True)
             else: print(f"⚠ {nm} (#{i}): chưa xoá được (giả lập đang bận / máy vừa đổi) — lần sau thử lại", flush=True)
     print("DONDEP " + json.dumps({"node": me, "total": len(names), "dead": len(gone) + len(lost), "deleted": ok + ok2,
-                                  "fail": (len(gone) - ok + len(lost) - ok2) if a.xoa else 0, "unknown": unknown + lost_unk, "lost": len(lost), "lost_live": lost_keep}))
+                                  "fail": (len(gone) - ok + len(lost) - ok2) if a.xoa else 0, "unknown": unknown + lost_unk, "lost": len(lost), "lost_live": lost_keep,
+                                  "orphan": orphan}))
 
 def cmd_forget(a):
     """forget TÊN: bỏ máy khỏi danh sách CHỈ KHI giả lập chắc chắn không còn máy đó (máy "ma") — không bao giờ xoá máy thật."""
@@ -6132,7 +6291,7 @@ def main():
     qy = s.add_parser("quyen"); qy.add_argument("--sua", action="store_true"); qy.set_defaults(f=cmd_quyen)      # 17/11e: lẫn quyền Admin
     s.add_parser("perfset").set_defaults(f=cmd_perfset)
     s.add_parser("ramcheck").set_defaults(f=cmd_ramcheck)
-    dd = s.add_parser("dondep"); dd.add_argument("--xoa", action="store_true"); dd.set_defaults(f=cmd_dondep)
+    dd = s.add_parser("dondep"); dd.add_argument("--xoa", action="store_true"); dd.add_argument("--mocoi", action="store_true"); dd.set_defaults(f=cmd_dondep)
     s.add_parser("nhanlai").set_defaults(f=cmd_nhanlai)
     rf = s.add_parser("ramfix"); rf.add_argument("names", nargs="*"); rf.add_argument("--all", action="store_true"); rf.set_defaults(f=cmd_ramfix)
     mt = s.add_parser("mktpl"); mt.add_argument("android"); mt.set_defaults(f=cmd_mktpl)

@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        28/11f — 🧹 TỰ DỌN MÁY KẸT + 💤 XOÁ MÁY KHÔNG MỞ 8 NGÀY + 🕒 GIỜ MÁY CHỦ + 🖥 WINDOWS 10 1511 ỔN ĐỊNH (SQL v71): cloudphoned 28/11f —
+#                 ~5 phút gọi cp_auto_clean (máy cũ đổi Android xoá kẹt, máy huỷ kẹt, máy hết hạn quá 1 ngày, đổi Android quá 1 giờ → huỷ lệnh,
+#                 khách bấm 🔁 Thử lại); máy NGỦ mà không ai mở ≥ N ngày (admin đặt, mặc định 8; máy chủ tắt không tính) → xoá vĩnh viễn, không
+#                 hoàn tiền; đồng hồ lệch → tự bù + w32tm (mạng chặn NTP: chỉnh giờ theo Supabase); chia đơn theo % đầy + ĐIỂM LAG (Windows không
+#                 WGC +25, CPU / card bận). phonectl 28/11f — dondep --mocoi: xoá máy cp_… mồ côi (web không còn / đã huỷ / lỗi) + máy mất tên không
+#                 rõ của ai đã tắt ≥ 24 giờ; Android 13+ (MuMu 15): ảnh nền CloudBlue bằng app trợ giúp cbwp.apk (không cần root, không khởi động lại
+#                 giao diện). panel / cpapi "Tối ưu Windows": máy không có Defender không còn báo lỗi Add-MpPreference; + đồng bộ giờ + TLS 1.2.
+#                 Bước 3b thêm: dịch vụ giờ Windows tự chạy · .NET / PowerShell TLS 1.2 · Windows 10 1511 (hết hỗ trợ) Windows Update chỉ báo.
+#                 Tải từ GitHub: thêm chứng chỉ gốc Mozilla (certifi / pip / CloudBlue PC) + PowerShell TLS 1.2 khi không có curl.exe (1511).
 #        28/11e — 📱 BLUEREAL — ĐIỆN THOẠI THẬT (SQL v70): cloudphoned 28/11e — điện thoại cắm USB (bật Gỡ lỗi USB) tự hiện ở admin ›
 #                 📱 Máy thật; đơn thuê máy thật → giao (đánh thức, giữ sáng khi sạc, mở khoá), gia hạn cộng ngày, hết hạn quá 30 phút → gỡ app +
 #                 xoá file khách rồi trả máy (🧹 Cần reset). bluestream 28/11e — mở máy thật: hình scrcpy + điều khiển theo số máy USB.
@@ -193,7 +202,36 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "28/11e"
+def _ssl_ca_extra():
+    """28/11f · Windows cũ (10 1511 Lite): kho chứng chỉ gốc của Windows có thể thiếu → Python báo CERTIFICATE_VERIFY_FAILED khi tải từ
+       GitHub / Supabase. Nạp THÊM bộ chứng chỉ gốc Mozilla có sẵn trên máy (certifi / bản trong pip / CloudBlue PC) cho mọi kết nối HTTPS —
+       chỉ thêm, không bớt chứng chỉ nào của Windows."""
+    if os.name != "nt": return
+    try:
+        import ssl
+        if getattr(ssl, "_cb_extra", None) is not None: return
+        cands = [os.environ.get("SSL_CERT_FILE") or "", r"C:\CloudBluePC\os\cacert.pem"]
+        for mod in ("certifi", "pip._vendor.certifi"):
+            try: cands.append(__import__(mod, fromlist=["where"]).where())
+            except Exception: pass
+        extra = [x for x in dict.fromkeys(cands) if x and os.path.isfile(x)]
+        ssl._cb_extra = extra
+        if not extra: return
+        base, keep = ssl._create_default_https_context, {}
+        def ctx(*a, **k):
+            if a or k or "c" not in keep:
+                c = base(*a, **k)
+                for x in extra:
+                    try: c.load_verify_locations(cafile=x)
+                    except Exception: pass
+                if a or k: return c
+                keep["c"] = c
+            return keep["c"]
+        ssl._create_default_https_context = ctx
+    except Exception: pass
+_ssl_ca_extra()
+
+VER = "28/11f"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -211,14 +249,14 @@ RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11e", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "28/11e"', "bluestream"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11f", "cloudphoned"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "28/11f"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
-         ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11n"', None),
-         ("cpapi.py", "cpapi.py", "cpapi bản 28/11e", "cpapi")]
+         ("windows/panel.py", "panel.py", "May khong co Windows Defender", "panel"),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11f"', None),
+         ("cpapi.py", "cpapi.py", "cpapi bản 28/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 28/11e", "bluestream": "bản 28/11e: 📱 mở được điện thoại THẬT", "cpapi": "cpapi bản 28/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 28/11f", "bluestream": "bản 28/11f: tải tệp an toàn trên Windows cũ", "cpapi": "cpapi bản 28/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -366,6 +404,19 @@ def gh_get(path):
             if len(data) > 2000: return data
         except Exception:
             pass
+    if os.name == "nt":                                    # 28/11f: Windows 10 1511 không có curl.exe → PowerShell (ép TLS 1.2)
+        for url, h in tries:
+            tmp = os.path.join(B, "redroid", "sua-tai.tmp")
+            try:
+                os.makedirs(os.path.dirname(tmp), exist_ok=True)
+                hd = "@{'User-Agent'='cloudblue-sua-tat-ca'" + ("; 'Accept'='" + h["Accept"] + "'" if h else "") + "}"
+                run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference = 'SilentlyContinue'; "
+                     f"Invoke-WebRequest -UseBasicParsing -TimeoutSec 90 -Headers {hd} -Uri '{url}' -OutFile '{tmp}'"], 120)
+                data = open(tmp, "rb").read(); os.remove(tmp)
+                if len(data) > 2000: return data
+            except Exception:
+                pass
     return None
 
 def good_py(data, name):
@@ -1477,6 +1528,49 @@ $ar = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate
 if ($ar -ne 1) {
   if ($APPLY) { & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU /v NoAutoRebootWithLoggedOnUsers /t REG_DWORD /d 1 /f 2>$null | Out-Null; 'AUR_SET=1' } else { 'AUR_MISS=1' }
 }
+# 28/11f: clock - Windows Time service auto + synced (a server clock that is minutes off made the web show it as disconnected)
+$ts = Get-Service w32time -ErrorAction SilentlyContinue
+$tsm = '' + (Get-CimInstance Win32_Service -Filter "Name='w32time'" -ErrorAction SilentlyContinue).StartMode
+if (-not $ts) { 'TIME=none' } else {
+  'TIME=' + $ts.Status + ',' + $tsm
+  if (($ts.Status -ne 'Running') -or ($tsm -ne 'Auto')) {
+    if ($APPLY) {
+      & sc.exe config w32time start= auto 2>$null | Out-Null
+      & net.exe start w32time 2>$null | Out-Null
+      & w32tm.exe /config /manualpeerlist:"time.windows.com,0x9 time.google.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update 2>$null | Out-Null
+      & w32tm.exe /resync /force 2>$null | Out-Null
+      'TIME_SET=1'
+    } else { 'TIME_MISS=1' }
+  }
+}
+# 28/11f: .NET / PowerShell use TLS 1.2 (Windows 10 1511: "Could not create SSL/TLS secure channel")
+$tm = @('HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319') | Where-Object {
+  (Test-Path $_) -and (((Get-ItemProperty $_ -Name SchUseStrongCrypto -ErrorAction SilentlyContinue).SchUseStrongCrypto -ne 1) -or
+                       ((Get-ItemProperty $_ -Name SystemDefaultTlsVersions -ErrorAction SilentlyContinue).SystemDefaultTlsVersions -ne 1)) }
+$tm = @($tm)
+if ($tm.Count -gt 0) {
+  if ($APPLY) {
+    foreach ($k in $tm) {
+      Set-ItemProperty -Path $k -Name SchUseStrongCrypto -Value 1 -Type DWord -ErrorAction SilentlyContinue
+      Set-ItemProperty -Path $k -Name SystemDefaultTlsVersions -Value 1 -Type DWord -ErrorAction SilentlyContinue
+    }
+    'TLS_SET=' + $tm.Count
+  } else { 'TLS_MISS=' + $tm.Count }
+}
+# 28/11f: Windows 10 1511 (out of support): Windows Update only notifies - no surprise feature upgrade / restart of the server
+$bn = 0
+try { $bn = [int](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).BuildNumber } catch {}
+'BUILD=' + $bn
+if (($bn -gt 0) -and ($bn -lt 14393)) {
+  $ao = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name AUOptions -ErrorAction SilentlyContinue).AUOptions
+  if ($ao -ne 2) {
+    if ($APPLY) {
+      & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU /v AUOptions /t REG_DWORD /d 2 /f 2>$null | Out-Null
+      & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU /v NoAutoUpdate /t REG_DWORD /d 0 /f 2>$null | Out-Null
+      'WU_SET=1'
+    } else { 'WU_MISS=1' }
+  }
+}
 try { 'WHEA=' + @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; Id = 47 } -MaxEvents 200 -ErrorAction Stop).Count } catch { 'WHEA=0' }
 'END=1'
 """
@@ -1552,6 +1646,16 @@ def iso_tune(c):
     if up: say("   ✓ vừa đặt Windows Update: " + " + ".join(up)); did.append("Windows Update: " + " + ".join(up))
     elif upm: say("   ⚠ Windows Update còn: " + " + ".join(upm)); miss += upm
     else: say("   ✓ Windows Update: không chia sẻ lên mạng + không tự khởi động lại máy chủ")
+    # 28/11f: đồng hồ · TLS 1.2 · Windows 1511 cập nhật chỉ báo
+    if d.get("TIME_SET"): say("   ✓ vừa bật dịch vụ giờ Windows (tự chạy) + đồng bộ giờ — đồng hồ lệch làm web báo máy chủ \"Mất kết nối\" nhầm"); did.append("đồng bộ giờ Windows")
+    elif d.get("TIME_MISS"): say(f"   ⚠ dịch vụ giờ Windows chưa tự chạy ({g('TIME')}) — đồng hồ dễ lệch"); miss.append("đồng bộ giờ Windows")
+    elif g("TIME") == "none": say("   ? máy không có dịch vụ giờ Windows (w32time) — phần nhận đơn tự bù giờ theo Supabase")
+    elif g("TIME"): say("   ✓ dịch vụ giờ Windows đang chạy (tự đồng bộ giờ)")
+    if d.get("TLS_SET"): say("   ✓ vừa bật TLS 1.2 cho .NET / PowerShell (Windows cũ hết lỗi \"Could not create SSL/TLS secure channel\")"); did.append("TLS 1.2 cho PowerShell")
+    elif d.get("TLS_MISS"): say("   ⚠ .NET / PowerShell chưa dùng TLS 1.2 mặc định"); miss.append("TLS 1.2 cho PowerShell")
+    if d.get("WU_SET"): say("   ✓ Windows 10 1511 (hết hỗ trợ): Windows Update chỉ báo — không tự nâng cấp / khởi động lại máy chủ"); did.append("Windows Update chỉ báo (1511)")
+    elif d.get("WU_MISS"): say("   ⚠ Windows 10 1511: Windows Update còn tự cài (có thể tự nâng cấp + khởi động lại máy chủ)"); miss.append("Windows Update chỉ báo (1511)")
+    T["build"] = int(g("BUILD", "0")) if g("BUILD", "0").isdigit() else 0
     wh = int(g("WHEA", "0") or 0) if g("WHEA", "0").isdigit() else 0
     if wh:
         say(f"   ✗ RAM báo lỗi phần cứng (WHEA 47) {wh} lần — máy ảo dễ treo / giật: kiểm hoặc thay RAM")
