@@ -3624,6 +3624,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
       </div>
       <div class="subpane" data-sub="servers" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">🖥️ Máy chủ</h3><span class="hint" id="cpa-nodesum"></span><button class="btn ghost sm" type="button" id="cpa-nodes-reload" style="margin-left:auto">Làm mới</button></div>
+      <div class="note" id="nap-box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><b>⏸ Máy chủ đầy tự ngừng nhận máy</b><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">khi đầy ≥ <input id="nap-pct" class="in" type="number" min="0" max="100" step="1" inputmode="numeric" style="width:72px" placeholder="95">%</label><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· tự nhận lại khi giảm <input id="nap-gap" class="in" type="number" min="5" max="50" step="1" inputmode="numeric" style="width:72px" placeholder="20">%</label><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">liên tục <input id="nap-min" class="in" type="number" min="1" max="240" step="1" inputmode="numeric" style="width:72px" placeholder="5"> phút</label><button class="btn sm" type="button" id="nap-save">Lưu</button><span class="hint" id="nap-msg" style="margin:0"></span><span class="hint" id="nap-sum" style="flex-basis:100%;margin:0"></span></div>
       <div class="note" id="nres-box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><b>⏯ Máy chủ đang “Ngừng nhận máy” tự nhận máy lại</b><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">khi đang dùng ≤ <input id="nres-pct" class="in" type="number" min="0" max="95" step="5" inputmode="numeric" style="width:72px" placeholder="50">%</label><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· đã ngừng ít nhất <input id="nres-min" class="in" type="number" min="1" max="1440" step="1" inputmode="numeric" style="width:72px" placeholder="10"> phút</label><button class="btn sm" type="button" id="nres-save">Lưu</button><span class="hint" id="nres-msg" style="margin:0"></span><span class="hint" style="flex-basis:100%;margin:0">Chỉ tự bật khi máy chủ khoẻ: đang kết nối, có máy mẫu, CPU / RAM / ổ cứng không quá tải. 0% = tắt tự bật. Máy chủ đang sửa / bảo trì → bấm <b>⛔ Ngừng hẳn</b> (không tự bật lại). Cần SQL v39.</span></div>
       <div class="nbulk" id="cpa-nbulk" hidden></div>
       <div class="nodes" id="cpa-nodes"><div class="empty">Đang tải…</div></div>
@@ -8571,6 +8572,10 @@ function cpSwNote(p) {                      // máy MỚI của lệnh đổi An
   const v = esc(p.android || ""), old = myCloud.find(x => x.id === p.replaces && ["active", "expired"].includes(x.status));
   if (old) return L(`Máy mới đổi sang Android ${v} — đang tạo (2–5 phút). Xong thì máy cũ tự xoá.`, `New Android ${v} phone — being created (2–5 min). The old phone is removed when it is ready.`);
   if (p.node === "wait-old") return L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`);
+  const m = Math.floor((Date.now() - Date.parse(p.created_at || "")) / 60000);
+  if (p.status === "pending" && !p.node && m >= 3)    // 28/11c: máy chủ đúng bản đang kín chỗ → đơn được GIỮ chờ, máy chủ nào trống trước tạo luôn
+    return L(`Máy cũ đã xoá — các máy chủ Android ${v} đang kín chỗ nên máy mới đang xếp hàng chờ (đã ${m} phút). Máy chủ nào trống trước sẽ tạo máy cho bạn ngay, thường chỉ vài phút. Trang tự cập nhật.`,
+             `Old phone deleted — Android ${v} servers are full right now, so your new phone is queued (${m} min so far). The first server with free space creates it right away, usually within a few minutes. This page updates by itself.`);
   return L(`Máy cũ đã xoá — đang tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Old phone deleted — creating the Android ${v} phone (2–5 min).`)
     + (p.error && /^Đổi Android:/.test(p.error) ? `<br>${esc(p.error)}` : "");
 }
@@ -9683,7 +9688,7 @@ function renderNodes() {
       <div class="nhd">
         <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
         <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
-          <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
+          <span class="pill ${off ? "bad" : !n.enabled ? "wt" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : !n.enabled ? nodePausePill(n, m) : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
         <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}${mvRow(n)}</div>
       </div>
       <div class="nc cpu">
@@ -13591,11 +13596,24 @@ Object.assign(ERR_EN, { SWITCH_OLD_PENDING: "Your previous Android switch is sti
   SWITCH_NEW_PENDING: "Your previous Android switch is still creating the new phone — wait for it (2–5 min), then switch again." });
 function nresPct() { const v = String(SITE.node_resume_pct ?? "").trim(); return /^\d{1,3}$/.test(v) ? Math.min(+v, 95) : 50; }
 function nresMin() { const v = String(SITE.node_resume_min ?? "").trim(); return /^\d{1,4}$/.test(v) ? Math.max(+v, 1) : 10; }
+/* 28/11c · máy chủ tự ngừng nhận máy khi đầy ≥ ngưỡng, tự nhận lại khi giảm đủ (cloudphoned gửi metrics.autopause mỗi 30 giây) */
+function nodeAp(n) { const a = n && n.metrics && n.metrics.autopause; return a && typeof a === "object" ? a : null; }
+function napN(x) { return x == null || x === "" || !isFinite(+x) ? "?" : String(Math.round(+x * 10) / 10); }
+function nodePausePill(n, m) {
+  const a = nodeAp(n), f = m && m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "";
+  return (n.pause_hard ? "Ngừng hẳn" : a && a.on ? "Tự ngừng" : "Ngừng nhận máy") + f;
+}
 function nodePauseRow(n) {
+  const a = nodeAp(n);
   if (!n.enabled) {
-    const t = n.pause_hard ? "⛔ Ngừng hẳn — không tự nhận máy lại" : nresPct() > 0 ? `⏸ Đang ngừng — tự nhận máy lại khi dùng ≤ ${nresPct()}% (sau ${nresMin()} phút)` : "⏸ Đang ngừng (đã tắt tự nhận máy lại)";
-    return `<div class="nr npause"><span>${t}</span><em>${n.paused_at ? "từ " + esc(lwWhen(n.paused_at)) : ""}</em></div>`;
+    const auto = !n.pause_hard && a && a.on;
+    const t = n.pause_hard ? "⛔ Ngừng hẳn — không tự nhận máy lại"
+      : auto ? `⏸ Tự ngừng nhận máy vì đầy ${napN(a.lv)}% (ngưỡng ${napN(a.pct)}%) — tự nhận lại khi ≤ ${napN(a.back)}% liên tục ${napN(a.min)} phút`
+      : nresPct() > 0 ? `⏸ Đang ngừng — tự nhận máy lại khi dùng ≤ ${nresPct()}% (sau ${nresMin()} phút)` : "⏸ Đang ngừng (đã tắt tự nhận máy lại)";
+    const at = auto && a.at ? a.at : n.paused_at;
+    return `<div class="nr npause"><span>${t}</span><em>${at ? "từ " + esc(lwWhen(at)) : ""}</em></div>`;
   }
+  if (a && a.hold) return `<div class="nr npause"><span>▶ Đã bật nhận máy lại lúc đang đầy — tạm không tự ngừng tới khi xuống ≤ ${napN(a.back)}%</span><em></em></div>`;
   if (n.auto_on_at && Date.now() - Date.parse(n.auto_on_at) < 6 * 3600e3) return `<div class="nr npause"><span>⏯ Tự nhận máy lại lúc ${esc(lwWhen(n.auto_on_at))}</span><em></em></div>`;
   return "";
 }
@@ -13621,6 +13639,31 @@ $("nres-save") && ($("nres-save").onclick = () => busy($("nres-save"), async () 
   if (SITE !== before) { NRES_F.forEach(([id]) => { delete $(id).dataset.dirty; }); nresFill(true); $("nres-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); try { renderNodes(); } catch (e) {} }
 }));
 { const _lc39 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc39.apply(this, arguments); try { nresFill(); } catch (e) {} return r; }; }
+function napNum(k, d, lo, hi) { const v = String(SITE[k] ?? "").trim(); return /^\d{1,3}(\.\d+)?$/.test(v) ? Math.max(lo, Math.min(hi, +v)) : d; }
+function napCfg() {
+  let pct = napNum("node_autopause_pct", 95, 0, 100); if (pct > 0 && pct < 50) pct = 50;     // như cloudphoned: gõ nhầm → không để mọi máy chủ tự ngừng
+  const gap = napNum("node_autopause_gap", 20, 5, 50), min = napNum("node_autopause_min", 5, 1, 240);
+  return { pct, gap, min, back: Math.max(0, pct - gap) };
+}
+const NAP_F = [["nap-pct", "node_autopause_pct"], ["nap-gap", "node_autopause_gap"], ["nap-min", "node_autopause_min"]];
+function napFill(force) {
+  for (const [id, k] of NAP_F) { const el = $(id); if (el && (force || !el.dataset.dirty)) el.value = SITE[k] ?? ""; }
+  const c = napCfg(), el = $("nap-sum"); if (!el) return;
+  el.innerHTML = c.pct > 0
+    ? `Đang đặt: đầy ≥ <b>${c.pct}%</b> → máy chủ tự bấm Ngừng nhận máy · xuống ≤ <b>${c.back}%</b> liên tục <b>${c.min} phút</b> → tự bấm Nhận máy lại. Mức đầy = số % trên thẻ máy chủ. Bấm “Nhận máy lại” lúc đang đầy → tạm không tự ngừng tới khi xuống ≤ ${c.back}%. ⛔ Ngừng hẳn không bao giờ tự bật. 0% = tắt. Cần máy chủ bản 28/11c.`
+    : "Đang <b>tắt</b> — máy chủ không tự ngừng khi đầy (nhập ngưỡng, VD 95%, để bật).";
+}
+NAP_F.forEach(([id]) => { const el = $(id); if (el) el.addEventListener("input", () => { el.dataset.dirty = "1"; }); });
+$("nap-save") && ($("nap-save").onclick = () => busy($("nap-save"), async () => {
+  const p = $("nap-pct").value.trim(), g = $("nap-gap").value.trim(), m = $("nap-min").value.trim();
+  const okP = !p || (/^\d{1,3}$/.test(p) && (+p === 0 || (+p >= 50 && +p <= 100))), okG = !g || (/^\d{1,2}$/.test(g) && +g >= 5 && +g <= 50), okM = !m || (/^\d{1,3}$/.test(m) && +m >= 1 && +m <= 240);
+  if (!okP || !okG || !okM) return toast("Nhập số: ngưỡng 50–100% (0 = tắt), giảm 5–50%, thời gian 1–240 phút (để trống = mặc định 95% · 20% · 5 phút).", 1);
+  try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}
+  const before = SITE;
+  await saveSettings({ node_autopause_pct: p, node_autopause_gap: g, node_autopause_min: m }, null, "Đã lưu — máy chủ dùng ngưỡng mới trong khoảng 2 phút.");
+  if (SITE !== before) { NAP_F.forEach(([id]) => { delete $(id).dataset.dirty; }); napFill(true); $("nap-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); try { renderNodes(); } catch (e) {} }
+}));
+{ const _lc2811 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc2811.apply(this, arguments); try { napFill(); } catch (e) {} return r; }; }
 
 /* ----- 🤖 Đổi Android: máy mới tạo lỗi → khách tự bấm Thử lại (SQL doi-android-1511) ----- */
 Object.assign(ERR, { SWITCH_WAIT: "Vừa thử xong — đợi 2 phút rồi bấm lại nhé.", SWITCH_RETRY_LIMIT: "Bạn đã bấm thử lại 5 lần — admin sẽ xử lý máy này, nhắn shop nếu cần gấp.",
