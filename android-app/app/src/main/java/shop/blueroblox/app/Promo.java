@@ -28,6 +28,7 @@ final class Promo {
     final Ui.Wrap mine;                                         // 🎫 mã của tôi còn dùng được cho loại đơn này — bấm là điền + áp dụng (SQL v35)
     private final Handler h = new Handler(Looper.getMainLooper());
     String code = "", key = "";
+    String rpc = "promo_check";                                // 28/11f: máy thật kiểm mã bằng realphone_promo_check (giá theo mẫu máy)
     JSONObject r = null;
     boolean busy = false;
     int seq = 0;
@@ -56,6 +57,9 @@ final class Promo {
             paint(); changed.run();
         }));
     }
+
+    /** Đổi hàm kiểm mã (mặc định promo_check). */
+    Promo rpc(String f) { if (f != null && !f.isEmpty()) rpc = f; return this; }
 
     /** Vẽ lại các mã của tôi dùng được cho loại đơn này (Offers tải xong → gọi lại). */
     void fillMine() {
@@ -115,11 +119,11 @@ final class Promo {
         Api.bg(() -> {
             JSONObject args = new JSONObject(cx.toString()).put("p_code", c).put("p_scope", scope);
             try {
-                Object o = Api.rpc("promo_check", args);
+                Object o = Api.rpc(rpc, args);
                 return o instanceof JSONObject ? (JSONObject) o : new JSONObject().put("ok", false).put("err", "PROMO_INVALID");
             } catch (Exception e) {
                 String m = String.valueOf(e.getMessage());
-                boolean off = m.contains("promo_check") || m.contains("schema cache") || m.contains("Could not find");
+                boolean off = m.contains(rpc) || m.contains("promo_check") || m.contains("schema cache") || m.contains("Could not find");
                 return new JSONObject().put("ok", false).put("err", off ? "PROMO_OFF" : m).put("net", !off);
             }
         }, o -> {
