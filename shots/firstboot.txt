@@ -1,0 +1,110 @@
+CB_FIRSTBOOT_OK
+kernel=7.1.6-1-cachyos
+host=CB-CI01
+dm=active /usr/lib/systemd/system/plasmalogin.service
+state=starting
+user=pc:/bin/bash groups=pc,sys,network,wheel,rfkill,video,audio,users,input,lp
+sessions=pc@476 pc@482 
+nm=active ip=10.0.2.15/24 
+root=/dev/vda4[/@] btrfs rw,noatime,compress=zstd:1,discard=async,space_cache=v2,subvolid=256,subvol=/@
+boot=/dev/vda3 vfat
+failed=
+sudo_nopasswd=
+liveuser=khong
+pkgs=949 python=3.14.6-1 efibootmgr=18-4
+agent=active opt=700 seed_ticket=0 identity=600
+--- agent.log
+2026-11-28 19:19:10 agent CloudBlue (Linux) 27.11b chạy — máy CB-CI01
+2026-11-28 19:19:10 ĐÃ ĐĂNG KÝ: máy CB-CI01 (33333333-3333-4333-8333-333333333333) — đã duyệt
+2026-11-28 19:19:10 đã mở chương trình điều khiển từ xa (CachyOS, pid 529)
+input=Power Button,AT Translated Set 2 keyboard,PC Speaker,VirtualPS/2 VMware VMMouse,VirtualPS/2 VMware VMMouse,CloudBlue Remote Pointer,
+kwin_sw_cursor=1 kwin_noperm=1
+--- remote.log
+2026-11-28 19:19:10 === CloudBlue PC dieu khien tu xa (CachyOS) 27.11b / pcremote 28.11g chay - khach pc ===
+2026-11-28 19:19:10 da tao chuot ao (uinput) de KWin luon hien con tro
+2026-11-28 19:19:10 da noi may chu phat hinh citest qua duong direct (10.0.2.2:8189)
+2026-11-28 19:19:10 da cap quyen KWin cho cbcap-py (/usr/share/applications/vn.cloudblue.cbcap.desktop)
+2026-11-28 19:19:10 may nay: quay man hinh qua cong XDG cua KDE, nen x264 (CPU) - du (GStreamer + ffmpeg x264)
+2026-11-28 19:19:11 lam moi danh sach ung dung cua KDE (kbuildsycoca6, menu plasma-): xong
+2026-11-28 19:19:11 loi tat man hinh nen (Firefox / Konsole / Dolphin) cho khach pc: 3 /home/pc/Desktop
+2026-11-28 19:19:14 co nguoi xem (admin ho tro, duong direct) -> bat bo quay
+2026-11-28 19:19:14 cbcap: <frozen site>:101: RuntimeWarning: Unexpected value in sys.prefix, expected /usr/local/lib, got /usr/local/lib/cloudblue
+2026-11-28 19:19:14 cbcap: <frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /usr/local/lib, got /usr/local/lib/cloudblue
+2026-11-28 19:19:15 cbcap: KWin truc tiep: luong man hinh 60 (1280x800) man hinh Virtual-1/1, vung logic [0, 0, 1280, 800], fake_input v6, 0.2 giay
+2026-11-28 19:20:18 cbcap: dan vao firefox / firefox / firefox bang Ctrl+V
+2026-11-28 19:20:36 cbcap: dan vao org.kde.konsole / konsole / org.kde.konsole bang Ctrl+Shift+V
+2026-11-28 19:21:01 het nguoi xem: gui 3171 khung, bo 0, 106 giay
+2026-11-28 19:19:14 cbcap: <frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /usr/local/lib, got /usr/local/lib/cloudblue
+2026-11-28 19:19:15 cbcap: KWin truc tiep: luong man hinh 60 (1280x800) man hinh Virtual-1/1, vung logic [0, 0, 1280, 800], fake_input v6, 0.2 giay
+2026-11-28 19:20:18 cbcap: dan vao firefox / firefox / firefox bang Ctrl+V
+2026-11-28 19:20:36 cbcap: dan vao org.kde.konsole / konsole / org.kde.konsole bang Ctrl+Shift+V
+2026-11-28 19:21:01 het nguoi xem: gui 3171 khung, bo 0, 106 giay
+--- quyen KWin (22.11g)
+desktop=1 cbcap_py=755 venv=home = /usr/bin
+2026-11-28 19:19:10 da tao chuot ao (uinput) de KWin luon hien con tro
+2026-11-28 19:19:10 da cap quyen KWin cho cbcap-py (/usr/share/applications/vn.cloudblue.cbcap.desktop)
+2026-11-28 19:19:10 may nay: quay man hinh qua cong XDG cua KDE, nen x264 (CPU) - du (GStreamer + ffmpeg x264)
+2026-11-28 19:19:11 lam moi danh sach ung dung cua KDE (kbuildsycoca6, menu plasma-): xong
+2026-11-28 19:19:11 loi tat man hinh nen (Firefox / Konsole / Dolphin) cho khach pc: 3 /home/pc/Desktop
+2026-11-28 19:19:15 cbcap: KWin truc tiep: luong man hinh 60 (1280x800) man hinh Virtual-1/1, vung logic [0, 0, 1280, 800], fake_input v6, 0.2 giay
+--- cbcap probe (KWin truc tiep, cbcap-py)
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /usr/local/lib, got /usr/local/lib/cloudblue
+{"cap": "27.11b", "uid": 1000, "wayland": "wayland-0", "runtime": "/run/user/1000", "tools": "du (GStreamer + ffmpeg x264)", "mode": "ff", "have": {"pipewiresrc": true, "videoconvert": true, "videoscale": true, "videorate": true, "fdsink": true, "x264enc": false, "rtph264pay": true, "udpsink": true, "ffmpeg_x264": true, "x11grab": true}, "log": ["KWin truc tiep: luong man hinh 60 (1280x800) man hinh Virtual-1/1, vung logic [0, 0, 1280, 800], fake_input v6, 0.0 giay"], "session": true, "backend": "kwin", "size": [1280, 800], "node": 60, "open_s": 0.0, "output": "Virtual-1", "outputs": 1, "geo": [0, 0, 1280, 800], "fake_input": 6, "virtual": false, "exe": "/usr/local/lib/cloudblue/cbcap-py", "move_reply": "ok", "move": true, "clip": {"wl": false, "set": true, "get_ok": true}, "active": {"kind": "term", "win": "org.kde.konsole / konsole / org.kde.konsole", "s": 0.0}, "rtp_packets": 285, "rtp_bytes": 325873, "rtp_key": 4, "encoder_alive": true, "stream": [1280, 800]}
+cbcap probe: backend=kwin virtual=0 rtp=285 err=- clip={"wl": false, "set": true, "get_ok": true} active={"kind": "term", "win": "org.kde.konsole / konsole / org.kde.konsole", "s": 0.0}
+--- cbcap probe (man hinh ao: may khong cam man hinh, 22.11h)
+<frozen site>:101: RuntimeWarning: Unexpected value in sys.exec_prefix, expected /usr/local/lib, got /usr/local/lib/cloudblue
+{"cap": "27.11b", "uid": 1000, "wayland": "wayland-0", "runtime": "/run/user/1000", "tools": "du (GStreamer + ffmpeg x264)", "mode": "ff", "have": {"pipewiresrc": true, "videoconvert": true, "videoscale": true, "videorate": true, "fdsink": true, "x264enc": false, "rtph264pay": true, "udpsink": true, "ffmpeg_x264": true, "x11grab": true}, "log": ["KWin: may khong cam man hinh -> man hinh ao 1920x1080 (Virtual-CloudBlue, vung logic [1280, 0, 1920, 1080])", "KWin truc tiep: luong man hinh 59 (1920x1080) man hinh Virtual-CloudBlue/1, vung logic [1280, 0, 1920, 1080], fake_input v6, 0.1 giay"], "session": true, "backend": "kwin", "size": [1920, 1080], "node": 59, "open_s": 0.1, "output": "Virtual-CloudBlue", "outputs": 1, "geo": [1280, 0, 1920, 1080], "fake_input": 6, "virtual": true, "exe": "/usr/local/lib/cloudblue/cbcap-py", "move_reply": "ok", "move": true, "rtp_packets": 538, "rtp_bytes": 661520, "rtp_key": 4, "encoder_alive": true, "stream": [1280, 720]}
+cbcap probe: backend=kwin virtual=1 rtp=538 err=-
+--- cbcap probe (cong XDG, duong phu)
+{"cap": "27.11b", "uid": 1000, "wayland": "wayland-0", "runtime": "/run/user/1000", "tools": "du (GStreamer + ffmpeg x264)", "mode": "ff", "have": {"pipewiresrc": true, "videoconvert": true, "videoscale": true, "videorate": true, "fdsink": true, "x264enc": false, "rtph264pay": true, "udpsink": true, "ffmpeg_x264": true, "x11grab": true}, "log": ["phien KDE: luong man hinh 59 (1280x800), ma ung dung 'vn.cloudblue.remote', thiet bi 3, con tro 1/7"], "session": true, "backend": "portal", "size": [1280, 800], "node": 59, "open_s": 0.0, "app": "vn.cloudblue.remote", "devices": 3, "cursor_modes": 7, "cursor_mode": 1, "move_reply": "ok", "move": true, "rtp_packets": 383, "rtp_bytes": 459829, "rtp_key": 4, "encoder_alive": true, "stream": [1280, 800]}
+cbcap probe: backend=portal virtual=0 rtp=383 err=-
+--- app cho khach (23/11: khach bao khong co trinh duyet, khong mo duoc terminal)
+nguoi xem CI da mo qua menu: konsole=2 firefox=11 units=app-org.kde.konsole-1385.scope app-org.kde.konsole-1887.scope app-firefox@affeb521f47646eabc871bdbcb5881d7.service app-org.kde.konsole@04de5e47e3944bf49ead07c049166957.service app-org.kde.konsole@6230154220de4164bf68cf64ee7fbaac.service 
+--- dan chu (23/11b: khach dan vao Konsole khong duoc)
+dan: konsole=CB-DAN-OK viet=Tiếng Việt OK ctrl_shift_v=CB-DAN2-OK wl_copy=khong klipper=1
+2026-11-28 19:20:18 cbcap: dan vao firefox / firefox / firefox bang Ctrl+V
+2026-11-28 19:20:36 cbcap: dan vao org.kde.konsole / konsole / org.kde.konsole bang Ctrl+Shift+V
+firefox=153.0.3-2 chromium= konsole=26.04.3-1 dolphin=26.04.3-1 kate=26.04.3-1 alacritty=0.17.0-1 spectacle=1:6.7.4-1 ark= gwenview= okular= plasma-desktop=6.7.4-1 plasma-workspace=6.7.4-1 kactivitymanagerd=6.7.4-1 kio=6.28.0-1 systemsettings=6.7.4-1 cachyos-hello=0.28.1-1 octopi= shelly= 
+desktop_files=141 co: Alacritty.desktop firefox.desktop kdesystemsettings.desktop org.kde.dolphin.desktop org.kde.kate.desktop org.kde.konsole.desktop systemsettings.desktop 
+plasmashell=675 kactivity=1 user_systemd=1 krunner=0
+HOME=/home/pc
+LANG=en_US.UTF-8
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl
+XDG_RUNTIME_DIR=/run/user/1000
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+DISPLAY=:0
+KDE_FULL_SESSION=true
+WAYLAND_DISPLAY=wayland-0
+XDG_CONFIG_DIRS=/home/pc/.config/kdedefaults:/etc/xdg
+XDG_CURRENT_DESKTOP=KDE
+XDG_MENU_PREFIX=plasma-
+XDG_SESSION_TYPE=wayland
+systemd_user=running failed_user=
+menu_entries=33 menu_co: Internet/	firefox.desktop	;System/	org.kde.konsole.desktop	;System/	org.kde.dolphin.desktop	;
+menus=plasma-applications.menu  menu_khong_prefix=0
+ksycoca=438287B@19:19:11 
+man_hinh_nen=firefox.desktop->/usr/share/applications/firefox.desktop org.kde.dolphin.desktop->/usr/share/applications/org.kde.dolphin.desktop org.kde.konsole.desktop->/usr/share/applications/org.kde.konsole.desktop  danh_dau=1
+favorites: favoritesPortedToKAstats=true;launchers=applications:systemsettings.desktop,preferred://filemanager,preferred://browser;
+skel: .bash_logout .bash_profile .bashrc .config  home: .bash_logout .bash_profile .bashrc .cache cb-dan2.txt cb-dan.txt cb-viet.txt .config Desktop Documents Downloads .gtkrc-2.0 .local Music Pictures Projects Public .screenrc Templates Videos  config: alacritty arkrc autostart baloofilerc cachyos dconf fish gtk-3.0 gtk-4.0 gtkrc gtkrc-2.0 kactivitymanagerdrc kcminputrc kconf_updaterc kded5rc kdedefaults kdeglobals kglobalshortcutsrc konsolerc kscreenlockerrc ktimezonedrc kwalletrc kwinoutputconfig.json kwinrc kwinrulesrc libaccounts-glib libinput-gestures.conf mozilla plasma-localerc plasma-org.kde.plasma.desktop-appletsrc plasmashellrc plasma-welcomerc powerdevilrc powermanagementprofilesrc pulse systemd Trolltech.conf user-dirs.dirs user-dirs.locale xsettingsd 
+mo_konsole (chay thang)=3 11 | 
+mo_firefox (chay thang)=1 10 | 
+mo_dolphin (chay thang)=1 0 | 
+mo_konsole (qua KIO nhu menu)=1 units=app-org.kde.konsole-3170.scope app-cachyos\x2dhello@autostart.service app-kxkb2locale1@autostart.service app-org.kde.konsole@1102ac048e5a4af8b56184f936976832.service app-dbus\x2d:1.15\x2dorg.a11y.atspi.Registry.slice app-dbus\x2d:1.2\x2dorg.freedesktop.impl.portal.desktop.kwallet.slice app-dbus\x2d: | 
+journal: Started Firefox - Web Browser.;No default firefox profile found;Started Konsole - Terminal.;Started app-org.kde.konsole-1887.scope.;Started app-org.kde.konsole-2660.scope.;app-firefox@affeb521f47646eabc871bdbcb5881d7.service: Consumed 13.757s CPU time over 1min 38.816s wall clock time, 1.1G memory peak.;Started Konsole - Terminal.;Started app-org.kde.konsole-3170.scope.;
+--- pacman (23.11c: khach chay 'pacman -S xz 7zip' bao target not found - may cai tu ISO thieu danh sach goi)
+pacman: sau_cai=4 agent_tu_tai=4 cai=7zip-ok mirror=5 repos=options,cachyos,core,extra,multilib,
+installing 7zip...
+:: Running post-transaction hooks...
+(1/1) Arming ConditionNeedsUpdate...
+2026-11-28 19:22:18 pacman: đã tải danh sách gói (4 kho) — khách cài phần mềm bằng pacman -S được
+--- grub (23.11c: bo cai cua khach doi tham so nhan kieu GRUB - may khoi dong bang systemd-boot)
+grub: mkconfig=0 sdboot=2 muc=2 root=2 grubdir=co
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet mitigations=off zswap.enabled=0"
+options root=UUID=b73cd11f-bd31-49b2-b718-403034e71136 rootflags=subvol=/@ rw nowatchdog console=ttyS0,115200 console=tty0 systemd.show_status=1 loglevel=3 quiet mitigations=off zswap.enabled=0
+options root=UUID=b73cd11f-bd31-49b2-b718-403034e71136 rootflags=subvol=/@ rw nowatchdog console=ttyS0,115200 console=tty0 systemd.show_status=1 loglevel=3 quiet mitigations=off zswap.enabled=0
+Adding boot menu entry for UEFI Firmware Settings ...
+done
+2026-11-28 19:22:27 tham số nhân: đã chép tham số nhân từ /etc/default/grub sang 2 mục khởi động (loglevel=3 quiet mitigations=off zswap.enabled=0) — khởi động lại máy là có hiệu lực
+--- cbagent.py status
+{ "agent": "27.11b", "registered": true, "name": "CB-CI01", "rent": "khong dat han", "info": { "host": "CB-CI01", "os": "cachyos", "os_ver": "rolling 7.1.6-1-cachyos", "os_name": "CachyOS", "agent": "27.11b", "cpu": "AMD EPYC 9V45 96-Core Processor", "cores": 4, "ram_gb": 7.7, "gpus": [ "Vendor 1234 Device 1111" ], "lan_ip": "10.0.2.15", "uptime": 204, "fw": "uefi", "linux": true, "rec": { "ok": false, "images": [], "ver": "ci", "lx": 2 }, "board": "QEMU Standard PC (Q35 + ICH9, 2009)", "sec": { "std": false, "hard": true, "lock": true }, "rmt": { "v": "28.11g", "s": "da noi may chu citest (direct) - cho nguoi xem | kwin ok", "age": 5 } } } 
+
