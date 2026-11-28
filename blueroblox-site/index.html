@@ -695,6 +695,14 @@ html[data-theme] .nbulk>.nacts{background:var(--sunk)}
 .maintbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:60;padding:8px 14px;border-radius:12px;background:rgba(255,107,129,.16);border:1px solid rgba(255,107,129,.5);color:#ffd4db;font-size:13px;max-width:calc(100vw - 24px);text-align:center}
 .maintbar[hidden]{display:none}
 .stock.wt{color:#ffc861}
+.revbox{border:1px solid var(--line,rgba(255,255,255,.08));border-radius:14px;padding:12px;display:grid;gap:10px;margin:2px 0 4px}
+.revhead{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.revhead label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.revhead .in{width:auto;max-width:120px;padding:5px 8px}
+.revbox .revin{width:110px;padding:5px 8px;text-align:right;display:block;margin-left:auto}
+.revbox .revin.revnote{width:150px;text-align:left;margin-top:4px;font-size:12px}
+.revbox tr.rev-cur td{background:rgba(233,192,99,.05)}
+.revbox tr.rev-tot td{border-top:2px solid var(--line,rgba(255,255,255,.12))}
 
 /* ===== CTV + quản lý máy (v6) ===== */
 .ctvchip{border-color:rgba(60,224,176,.45)!important;color:var(--ok)!important}
@@ -3354,6 +3362,17 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
       <div class="tiles" style="grid-template-columns:repeat(4,1fr)" id="st-tiles"></div>
       <div class="hint" id="st-db" style="margin:0"></div>
+      <div class="revbox" id="rev-box">
+        <div class="revhead"><h3 style="margin:0">📅 Chốt tháng · trừ tiền điện + chi phí → lãi</h3>
+          <label>Năm <select class="in" id="rev-year" aria-label="Chọn năm"></select></label>
+          <label>Giá điện <input class="in" id="rev-price" inputmode="numeric" maxlength="6" placeholder="2800"> đ / số</label>
+          <label>Tổng công suất máy <input class="in" id="rev-watt" inputmode="numeric" maxlength="8" placeholder="vd 3500"> W</label>
+          <button class="btn ghost sm" type="button" id="rev-save">Lưu giá điện</button><span class="hint" id="rev-msg"></span></div>
+        <div class="tbl"><table><thead><tr><th>Tháng</th><th class="num">Doanh thu</th><th class="num">Số điện (kWh)</th><th class="num">Tiền điện</th><th class="num">Chi phí khác</th><th class="num">Lãi</th><th>Trạng thái</th></tr></thead>
+          <tbody id="rev-tb"><tr><td colspan="7" class="hint" style="text-align:center;padding:14px">Đang tải…</td></tr></tbody></table></div>
+        <div class="hint">Doanh thu = đơn cửa hàng đã giao + ĐT đám mây (không tính tiền tài khoản admin). Sang tháng mới, tháng cũ <b>tự chốt</b> (số giữ nguyên), doanh thu tháng mới tính lại từ 0 · hết năm tự chốt năm.
+          Tiền điện = số điện × giá điện: gõ số điện thật ở công tơ, để trống thì ước theo tổng công suất máy × số giờ. Lãi = doanh thu − tiền điện − chi phí khác.</div>
+      </div>
       <h3 style="margin:6px 0 0">Top sản phẩm bán chạy</h3>
       <div class="tbl"><table><thead><tr><th>Sản phẩm</th><th>Lượt bán</th><th>Doanh thu</th></tr></thead><tbody id="st-top"></tbody></table></div>
     </div>
@@ -3633,9 +3652,8 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
       <div class="subpane" data-sub="price" hidden>
       <div class="f" style="grid-template-columns:1fr 1fr">
         <h3>🏷️ Thẻ sản phẩm hiển thị ở cửa hàng</h3>
-        <label class="full">📦 Số lượng còn bán (mỗi máy khách thuê trừ 1 · về 0 = hiện "Hết hàng" · để trống = không giới hạn)
-          <span style="display:flex;gap:8px;align-items:center"><input id="cpa-stock" type="number" min="0" inputmode="numeric" placeholder="Không giới hạn" style="max-width:200px;font-size:18px;font-weight:700">
-          <button class="btn ghost sm" type="button" data-stockadd="10">+10</button><button class="btn ghost sm" type="button" data-stockadd="50">+50</button><span class="hint" id="cpa-stockhint"></span></span></label>
+        <div class="full hint">📦 <b>Còn hàng tự theo máy chủ</b> — không cần nhập số lượng: khách thấy "Còn chỗ" khi còn máy chủ trống, mọi máy chủ đầy mới hiện "Hết hàng".
+          <input id="cpa-stock" type="hidden" value=""><span id="cpa-stockhint" hidden></span></div>
         <label class="full">Tên sản phẩm<input id="cpa-cname" maxlength="80" placeholder="Điện thoại đám mây (Cloud Phone)"></label>
         <label class="full">Điểm nổi bật (cách nhau bằng dấu phẩy, tối đa 4)<input id="cpa-cfeats" maxlength="160" placeholder="Android 24/7, Chạy game, App PC + Android"></label>
         <label class="full">Mô tả / Nội dung<textarea id="cpa-cdesc" rows="4" maxlength="1200" placeholder="Giới thiệu sản phẩm cho khách…"></textarea></label>
@@ -5265,12 +5283,11 @@ function m3Thumb(it, big) {   // ảnh động (canvas) — hàng to vẽ nét g
   return p.image ? `<img class="thumb-img" src="${esc(p.image)}" alt="" loading="lazy" decoding="async">` : `<canvas data-id="${esc(p.id)}" data-c="${esc(p.thumb || p.cat)}"${mode}></canvas>`;
 }
 function m3Stock(p) { const s = +p.stock || 0; return s === 0 ? ["out", t("Hết hàng", "sold_out")] : s < 15 ? ["low", t("Còn", "left") + " " + s] : ["ok", t("Còn", "left") + " " + s]; }
-function m3CloudSt() {
-  const p = CPpricing || CP_DEF, s = CPstatus, stk = p.stock == null ? null : +p.stock;
+function m3CloudSt() {        // 28/11 (SQL v69): không hiện số lượng — máy chủ còn chỗ = "Còn chỗ", mọi máy chủ đầy mới "Hết hàng"
+  const s = CPstatus;
   return s && s.maint ? ["wt", L("Bảo trì", "Maintenance")] : s && s.online === false ? ["wt", L("Tạm ngưng", "Paused")]
-    : stk !== null && stk <= 0 ? ["out", L("Hết hàng", "Sold out")]
     : s && !cpAnyRoom() ? ["out", L("Hết hàng", "Sold out")]
-    : ["ok", stk !== null ? L("Còn " + stk + " máy", stk + " left") : L("Còn hàng", "In stock")];
+    : ["ok", L("Còn chỗ", "Available")];
 }
 function m3AppBtn() {
   return typeof APP_INFO !== "undefined" && APP_INFO ? (APP_INFO.ios ? `<a class="btn ghost appdl" href="#" data-iosguide="1">📱 ${L("Cài app lên iPhone", "Install on iPhone")}</a>`
@@ -7787,11 +7804,14 @@ async function loadStats() {
   $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính tiền của tài khoản admin (nạp / mua / cộng thử)";
   dbCheck();
   const tile = (b, lab, hot) => `<div${hot ? ' style="border-color:rgba(233,192,99,.4)"' : ""}><b${hot ? ' style="color:var(--gold-hi)"' : ""}>${b}</b><span>${lab}</span></div>`;
+  const revM = (+s.revenue_month || 0) + (+s.cp_revenue_month || 0);       // SQL v69: ô 1 = doanh thu THÁNG NÀY (cửa hàng + ĐT đám mây) — sang tháng mới về 0, tháng cũ đã chốt
   box.innerHTML = [
-    tile(vnd(s.revenue_total), "Tổng doanh thu", 1),
-    tile(vnd(s.revenue_today), "Doanh thu hôm nay"),
-    tile(vnd(s.revenue_month), "Doanh thu tháng này"),
+    `<div style="border-color:rgba(233,192,99,.4)"><b style="color:var(--gold-hi)" id="st-revm">${vnd(revM)}</b><span>Tổng doanh thu tháng này (sang tháng mới về 0 · tháng cũ đã chốt ở dưới)</span></div>`,
+    `<div><b id="st-profm">…</b><span>Lãi tháng này (đã trừ tiền điện + chi phí)</span></div>`,
+    tile(vnd((+s.revenue_today || 0) + (+s.cp_revenue_today || 0)), "Doanh thu hôm nay"),
     tile(vnd(s.topup_total), "Tổng đã nạp"),
+    tile(vnd(s.revenue_month), "DT cửa hàng tháng này"),
+    tile(vnd(s.revenue_total), "DT cửa hàng từ trước tới nay"),
     tile((+s.clone_qty).toLocaleString("vi-VN"), "Clone đã bán"),
     tile(vnd(s.clone_revenue), "DT clone"),
     tile((+s.vps_orders).toLocaleString("vi-VN"), "Lượt bán VPS"),
@@ -7812,11 +7832,89 @@ async function loadStats() {
     ].join("");
   } else box.innerHTML += `<div class="hint" style="grid-column:1/-1">Doanh thu ĐT đám mây: chạy file SQL v24 trong Supabase để bật.</div>`;
   loadCpSales();
+  revLoad();
   $("st-top").innerHTML = (s.top_products || []).length
     ? s.top_products.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${(+t.orders).toLocaleString("vi-VN")}</td><td class="num">${vnd(t.revenue)}</td></tr>`).join("")
     : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Chưa có đơn nào.</td></tr>`;
 }
 $("st-reload") && ($("st-reload").onclick = loadStats);
+
+/* ===== 📅 CHỐT THÁNG (SQL v69): doanh thu từng tháng (tháng cũ tự chốt) · chốt năm · tiền điện = số điện × giá điện · chi phí khác · lãi ===== */
+let REV = null;
+const revFmtM = m => { const a = String(m || "").split("-"); return a.length === 2 ? `${+a[1]}/${a[0]}` : String(m || ""); };
+const revN1 = v => (+v || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 });
+function revNum(k, raw) {                          // "1.200" (ngăn nghìn) → 1200 · "1200,5" → 1200.5 · tiền: bỏ mọi dấu chấm / phẩy / cách
+  const v = String(raw || "").trim().replace(/\s+/g, "").replace(/đ$/i, "");
+  if (k === "other_cost") return v.replace(/[.,]/g, "");
+  if (/^\d{1,3}(\.\d{3})+$/.test(v)) return v.replace(/\./g, "");
+  return v.replace(",", ".");
+}
+async function revLoad(y) {
+  const tb = $("rev-tb"); if (!tb || !isAdmin()) return;
+  const { data, error } = await sb.rpc("admin_rev_months", y ? { p_year: +y } : {});
+  if (error) {
+    const miss = /admin_rev_months|schema cache|does not exist|Could not find/i.test(error.message || "");
+    tb.innerHTML = `<tr><td colspan="7" class="hint" style="text-align:center;padding:14px">${miss ? "Chưa chạy <b>SQL v69</b> (chốt tháng) — chạy xong bấm Tải lại." : esc(errMsg(error))}</td></tr>`;
+    if ($("st-profm")) $("st-profm").textContent = miss ? "cần SQL v69" : "—";
+    return;
+  }
+  REV = data; revDraw();
+}
+function revDraw() {
+  const d = REV, tb = $("rev-tb"); if (!d || !tb) return;
+  const ys = (Array.isArray(d.years) && d.years.length ? d.years : [d.year]).map(Number).sort((a, b) => b - a);
+  $("rev-year").innerHTML = ys.map(y => `<option value="${y}"${y === +d.year ? " selected" : ""}>${y}</option>`).join("");
+  if (document.activeElement !== $("rev-price")) $("rev-price").value = d.elec_price != null ? +d.elec_price : 2800;
+  if (document.activeElement !== $("rev-watt")) $("rev-watt").value = +d.watt_total ? +d.watt_total : "";
+  const pc = v => `<b style="color:${+v >= 0 ? "var(--ok)" : "var(--bad)"}">${vnd(v)}</b>`;
+  const rows = (d.months || []).slice().reverse().map(m => {
+    const cur = m.month === d.cur, lb = revFmtM(m.month);
+    return `<tr data-revm="${esc(m.month)}"${cur ? ' class="rev-cur"' : ""}>
+      <td><b>${lb}</b>${cur ? '<div class="hint">tháng này</div>' : ""}</td>
+      <td class="num"><b>${vnd(m.rev)}</b><div class="hint">cửa hàng ${vnd(m.rev_shop)} · ĐT đám mây ${vnd(m.rev_cp)}</div></td>
+      <td class="num"><input class="in revin" data-revk="kwh" inputmode="decimal" maxlength="12" value="${m.kwh_auto ? "" : esc(String(m.kwh))}" placeholder="ước ${revN1(m.kwh_est)}" aria-label="Số điện tháng ${lb}"></td>
+      <td class="num">${vnd(m.elec_cost)}<div class="hint">${revN1(m.kwh)} số × ${vnd(m.elec_price)}${m.kwh_auto ? " · số ước" : ""}</div></td>
+      <td class="num"><input class="in revin" data-revk="other_cost" inputmode="numeric" maxlength="15" value="${+m.other_cost ? (+m.other_cost).toLocaleString("vi-VN") : ""}" placeholder="0" aria-label="Chi phí khác tháng ${lb}">
+        <input class="in revin revnote" data-revk="note" maxlength="300" value="${esc(m.note || "")}" placeholder="ghi chú (mạng, sửa máy…)" aria-label="Ghi chú chi phí tháng ${lb}"></td>
+      <td class="num">${pc(m.profit)}</td>
+      <td>${cur ? '<span class="pill wt">⏳ Đang chạy</span><div class="hint">sang tháng mới tự chốt</div>' : '<span class="pill ok">✅ Đã chốt</span>'}</td></tr>`;
+  });
+  const t = d.total || {};
+  rows.push(`<tr class="rev-tot"><td><b>Cả năm ${esc(String(d.year))}</b></td><td class="num"><b>${vnd(t.rev)}</b></td><td class="num">${revN1(t.kwh)} số</td>
+    <td class="num">${vnd(t.elec_cost)}</td><td class="num">${vnd(t.other_cost)}</td><td class="num">${pc(t.profit)}</td>
+    <td>${t.closed ? '<span class="pill ok">✅ Đã chốt năm</span>' : '<span class="pill">Đang cộng dồn</span>'}</td></tr>`);
+  tb.innerHTML = rows.join("");
+  const c = (d.months || []).find(m => m.month === d.cur);
+  if (c) {
+    const a = $("st-revm"), b = $("st-profm");
+    if (a) a.textContent = vnd(c.rev);
+    if (b) { b.textContent = vnd(c.profit); b.style.color = +c.profit >= 0 ? "var(--ok)" : "var(--bad)"; }
+  }
+}
+document.addEventListener("change", async e => {
+  const i = e.target && e.target.closest ? e.target.closest(".revin") : null; if (!i || !isAdmin()) return;
+  const tr = i.closest("[data-revm]"); if (!tr) return;
+  const k = i.dataset.revk, msg = $("rev-msg");
+  const v = k === "note" ? i.value.trim() : revNum(k, i.value);
+  if (k === "kwh" && v !== "" && !/^\d{1,9}(\.\d)?$/.test(v)) { if (msg) msg.textContent = "Số điện là số ≥ 0, vd 1250 hoặc 1250,5"; i.focus(); return; }
+  if (k === "other_cost" && v !== "" && !/^\d{1,11}$/.test(v)) { if (msg) msg.textContent = "Chi phí khác là số tiền ≥ 0, vd 500000"; i.focus(); return; }
+  const body = { [k]: k === "kwh" ? (v === "" ? null : v) : k === "other_cost" ? (v === "" ? "0" : v) : v };
+  i.disabled = true;
+  const { data, error } = await sb.rpc("admin_rev_month_save", { p_month: tr.dataset.revm, p: body });
+  i.disabled = false;
+  if (error) { if (msg) msg.textContent = errMsg(error); return; }
+  REV = data; revDraw(); if (msg) msg.textContent = "✓ Đã lưu tháng " + revFmtM(tr.dataset.revm);
+});
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && e.target.classList && e.target.classList.contains("revin")) e.target.blur(); });
+$("rev-year") && ($("rev-year").onchange = () => revLoad($("rev-year").value));
+$("rev-save") && ($("rev-save").onclick = () => busy($("rev-save"), async () => {
+  const pr = revNum("other_cost", $("rev-price").value), w = revNum("other_cost", $("rev-watt").value), msg = $("rev-msg");
+  if (!/^\d{1,5}$/.test(pr)) { msg.textContent = "Giá điện là số tiền / 1 số (kWh), vd 2800"; return; }
+  if (w !== "" && !/^\d{1,7}$/.test(w)) { msg.textContent = "Tổng công suất là số W, vd 3500"; return; }
+  const { data, error } = await sb.rpc("admin_rev_settings_save", { p: { elec_price: pr, watt_total: w === "" ? "0" : w } });
+  if (error) { msg.textContent = /admin_rev_settings_save|schema cache|Could not find/i.test(error.message || "") ? "Chưa chạy SQL v69." : errMsg(error); return; }
+  REV = data; revDraw(); msg.textContent = "✓ Đã lưu giá điện " + vnd(+pr) + " / số" + (+w ? " · công suất " + (+w).toLocaleString("vi-VN") + " W" : "");
+}));
 
 
 /* ---- nhập tên máy khi giao VPS: đếm & tách nhanh ---- */
@@ -8122,9 +8220,7 @@ function cpBlocked() {      // lý do không cho thuê (null = được thuê)
   const s = CPstatus; if (!s || isAdmin()) return null;
   if (s.maint) return "Đang bảo trì" + (s.maint_msg ? ": " + s.maint_msg : "") + ". Vui lòng quay lại sau.";
   if (s.online === false) return "Máy chủ điện thoại đang tạm ngưng, vui lòng quay lại sau.";
-  const p = CPpricing || CP_DEF;
-  if (p.stock != null && +p.stock <= 0) return L("Đã hết hàng. Vui lòng quay lại sau.", "Sold out. Please come back later.");
-  if (!cpAnyRoom()) return L("Đã hết máy trống. Vui lòng quay lại sau.", "No free capacity right now. Please come back later.");
+  if (!cpAnyRoom()) return L("Đã hết hàng — mọi máy chủ đang đầy. Vui lòng quay lại sau ít phút.", "Sold out — all servers are full. Please come back in a few minutes.");
   return null;
 }
 // Luôn đọc giá mới nhất từ máy chủ (admin vừa sửa là khách thấy ngay)
@@ -8188,7 +8284,7 @@ function cpCheck() {
   if (cpSel.cpu < 4 && cpSel.fps > 60) return L("Máy dưới 4 nhân chỉ chọn tối đa 60 FPS — treo game nên để 30 FPS cho mượt, hoặc chọn từ 4 nhân trở lên.", "Under 4 cores the limit is 60 FPS (30 FPS is smoothest for farming), or pick 4+ cores.");
   if (!(cpSel.qty >= 1 && cpSel.qty <= 20)) return "Số lượng máy phải từ 1 đến 20.";
   if (!isAdmin() && window.__cpLeft != null && cpSel.qty > window.__cpLeft) return L(`Tài khoản của bạn chỉ còn được thuê thêm ${window.__cpLeft} máy.`, `Your account can only rent ${window.__cpLeft} more phone(s).`);
-  if (p.stock != null && cpSel.qty > +p.stock && !isAdmin()) return +p.stock <= 0 ? L("Đã hết hàng.", "Sold out.") : L(`Chỉ còn ${p.stock} máy — chọn số lượng nhỏ hơn.`, `Only ${p.stock} left — choose a smaller quantity.`);
+  // 28/11 (SQL v69): bỏ số lượng nhập tay — chỉ chặn khi máy chủ hết chỗ (kiểm ở dưới theo RAM / nhân còn trống)
   const s = CPstatus;
   // HỆ ĐIỀU HÀNH (bắt buộc) + chỗ trống riêng của bản Android đã chọn
   if (!cpAndList().includes(cpSel.android)) return L("Hãy chọn hệ điều hành (bản Android).", "Choose an operating system (Android version).");
@@ -9258,11 +9354,7 @@ async function cpCancel(id) {
 /* ===== THẺ "ĐT đám mây" ở lưới sản phẩm (tên/nội dung admin sửa được) ===== */
 function cloudGridCard() {
   const c = cpCardShow(), p = CPpricing || CP_DEF, from = cpPerDay(p.min_ram, p.min_cpu), s = CPstatus;
-  const stk = p.stock == null ? null : +p.stock;
-  const st = s && s.maint ? ["wt", L("Bảo trì", "Maintenance")] : s && s.online === false ? ["wt", L("Tạm ngưng", "Paused")]
-    : stk !== null && stk <= 0 ? ["out", L("Hết hàng", "Sold out")]
-    : s && !cpAnyRoom() ? ["out", L("Hết hàng", "Sold out")]
-    : ["ok", stk !== null ? L("Còn " + stk + " máy", stk + " left") : L("Còn hàng", "In stock")];
+  const st = m3CloudSt();      // 28/11: "Còn chỗ" / "Hết hàng" theo máy chủ (không hiện số lượng)
   return `<article class="card" style="cursor:pointer" data-cpbuy="1">
     <div class="thumb"><canvas data-id="cloudphone" data-c="vps"></canvas><span class="tag">ĐT ĐÁM MÂY</span><span class="hot">MỚI</span></div>
     <div class="body"><h4>${esc(c.name)}</h4>
@@ -9364,7 +9456,7 @@ async function loadCloudAdm() {
   if ($("cpa-maxuser")) $("cpa-maxuser").value = pr.max_per_user == null ? 1 : pr.max_per_user;
   if ($("cpa-dtiers")) { const dt = cpaDiskTxt(pr); $("cpa-dtiers").value = dt.tiers || "0:8, 4:13, 8:16"; $("cpa-dpkgs").value = dt.pkgs;
     $("cpa-dmax").value = pr.disk_max_gb || 64; $("cpa-dshop").value = pr.disk_shop_on ? "1" : "0"; cpaDiskHint(); }
-  $("cpa-stock").value = pr.stock == null ? "" : pr.stock;
+  $("cpa-stock").value = "";                                  // 28/11: còn hàng theo máy chủ — lưu là bỏ số lượng cũ (không giới hạn)
   $("cpa-stockhint").textContent = pr.stock == null ? "Đang: không giới hạn" : +pr.stock <= 0 ? "Đang HẾT HÀNG" : "Đang còn " + pr.stock + " máy";
   $("cpa-msg").textContent = ""; cpaAnalyze(); frFill(pr);
   const { data } = await sb.from("cloud_phones").select("*").order("created_at", { ascending: false });
