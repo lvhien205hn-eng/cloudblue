@@ -265,7 +265,7 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 27/11n", sua.VER == "27/11n")
+ck("bản sua-tat-ca 28/11c", sua.VER == "28/11c")
 reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
 os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 fx = st.get("tune_fix") or {}
@@ -293,12 +293,12 @@ ck("card vừa lên tải (xung chưa lên nhưng điện đã cao) → không k
 ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không kết luận kẹt",
    G["gpu_eff"](53.0, 1923.0, 1987.0, 71.0, 230.0) == 53.0 and G["gpu_stuck"](98.0, None, 1974.0) is False and G["gpu_stuck"](98.0, 139.0, 1974.0) is True
    and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
-ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 27/11n",
+ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11c",
    'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
-   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "27/11n"' in CPD
-   and "cloudphoned bản 27/11n chạy" in CPD)
-ck("sua-tat-ca 27/11n: dấu cloudphoned + cpapi 27/11n (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11n", "cloudphoned") in sua.FILES
-   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 27/11n" and ("cpapi.py", "cpapi.py", "cpapi bản 27/11n", "cpapi") in sua.FILES
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11c"' in CPD
+   and "cloudphoned bản 28/11c chạy" in CPD)
+ck("sua-tat-ca 28/11c: dấu cloudphoned 28/11c + cpapi 27/11n (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11c", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11c" and ("cpapi.py", "cpapi.py", "cpapi bản 27/11n", "cpapi") in sua.FILES
    and sua.MARK_RUN["cpapi"] == "cpapi bản 27/11n")
 ck("27/11l · gpus() gọi nvidia-smi qua smi_bin() (không còn gọi trần 'nvidia-smi' → win54 driver 466.77 hết 'không đọc được card')",
    '[smi_bin(), "--query-gpu=" + q' in CPD and 'subprocess.run(["nvidia-smi"' not in CPD and "NVSMI\\nvidia-smi.exe" in CPD and "DriverStore" in CPD)
@@ -361,6 +361,103 @@ ck("cảnh báo cpsu: … → báo cảnh báo · chỉ có STOPPED → STOPPED 
    W("cpsu: socket @cpsu already in use\nINSTALL_OK ramdisk=/debug_ramdisk tmpfs=1 su=/debug_ramdisk/su made=0\nSTOPPED") == "cpsu: socket @cpsu already in use (daemon không chạy)"
    and W("STOPPED\n") == "STOPPED" and W("") == "máy không trả lời" and W(None) == "máy không trả lời")
 ck("_root_apply báo lỗi qua _root_why", 'return False, "Chưa bật được root: " + _root_why(o)' in PC)
+
+# ============================================================== 28/11c · 🤖 tự ngừng / tự nhận máy theo mức đầy
+print("28/11c · cloudphoned tự Ngừng nhận máy khi đầy ≥ ngưỡng, tự Nhận máy lại khi giảm ≤ ngưỡng − 20% liên tục N phút")
+G3 = {}
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name == "autopause_plan":
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G3)
+P = G3["autopause_plan"]; T0 = 1764300000.0
+st, a = P({}, True, False, 96.0, T0, 95, 20, 5)
+ck("đang nhận máy, đầy 96% ≥ 95% → TỰ NGỪNG (ghi sổ auto + lúc + mức)", a == "pause" and st.get("auto") is True and st.get("lv") == 96.0 and st.get("at") == T0, (st, a))
+ck("đầy 94% < 95% → không làm gì", P({}, True, False, 94.0, T0, 95, 20, 5) == ({}, None))
+st2, a2 = P(st, False, False, 80.0, T0 + 60, 95, 20, 5)
+ck("đang tự ngừng, còn 80% (> 75%) → vẫn ngừng", a2 is None and st2.get("auto") and "low" not in st2, (st2, a2))
+st3, a3 = P(st2, False, False, 74.0, T0 + 120, 95, 20, 5)
+ck("xuống 74% (≤ 75%) → bắt đầu đếm, CHƯA nhận lại ngay", a3 is None and st3.get("low") == T0 + 120, (st3, a3))
+st4, a4 = P(st3, False, False, 76.0, T0 + 200, 95, 20, 5)
+ck("lên lại 76% trước đủ 5 phút → bỏ đếm", a4 is None and "low" not in st4, (st4, a4))
+st5, a5 = P(dict(st4, low=T0 + 300), False, False, 70.0, T0 + 300 + 5 * 60, 95, 20, 5)
+ck("≤ 75% liên tục đủ 5 phút → TỰ NHẬN MÁY LẠI, xoá sổ", a5 == "resume" and st5 == {}, (st5, a5))
+ck("admin ngừng tay (không phải tự ngừng) → KHÔNG tự nhận lại (luật cũ của web lo)", P({}, False, False, 10.0, T0, 95, 20, 5) == ({}, None))
+ck("⛔ Ngừng hẳn → không đụng, quên sổ tự ngừng", P(st, False, True, 10.0, T0, 95, 20, 5) == ({}, None))
+st6, a6 = P(st, True, False, 96.0, T0 + 60, 95, 20, 5)
+ck("đang tự ngừng mà admin bấm Nhận máy lại (còn 96%) → tôn trọng: không tự ngừng lại (hold)", a6 is None and st6 == {"hold": True}, (st6, a6))
+ck("… hold: còn trên mức nhận lại → vẫn không tự ngừng", P(st6, True, False, 97.0, T0 + 120, 95, 20, 5) == ({"hold": True}, None))
+st7, a7 = P(st6, True, False, 70.0, T0 + 180, 95, 20, 5)
+ck("… đầy xuống ≤ 75% → hết hold (bật lại chế độ tự ngừng)", a7 is None and st7 == {}, (st7, a7))
+ck("… sau đó đầy lại ≥ 95% → tự ngừng như thường", P(st7, True, False, 95.0, T0 + 240, 95, 20, 5)[1] == "pause")
+ck("tắt tính năng (ngưỡng 0) lúc đang tự ngừng → nhận lại luôn", P(st, False, False, 99.0, T0, 0, 20, 5) == ({}, "resume"))
+ck("tắt tính năng lúc đang nhận → không tự ngừng", P({}, True, False, 99.0, T0, 0, 20, 5) == ({}, None))
+ck("không đọc được mức đầy → không tự ngừng", P({}, True, False, None, T0, 95, 20, 5) == ({}, None))
+ck("khoảng giảm tuỳ chỉnh: ngưỡng 90, giảm 30 → nhận lại khi ≤ 60%", P({"auto": True, "at": T0, "low": T0}, False, False, 60.0, T0 + 300, 90, 30, 5)[1] == "resume"
+   and P({"auto": True, "at": T0}, False, False, 61.0, T0 + 900, 90, 30, 5)[1] is None)
+ck("heartbeat gọi autopause_tick(metrics fill_pct) → metrics.autopause cho web · bấm bằng PATCH cloud_nodes enabled (+paused_at / auto_on_at)",
+   'ap = autopause_tick(metrics.get("fill_pct"))' in CPD and 'if ap: metrics["autopause"] = ap' in CPD
+   and 'f1 = {"enabled": on, ("auto_on_at" if on else "paused_at"): now().isoformat()}' in CPD and '_en.update(v=on, t=time.time())' in CPD)
+ck("cài đặt đọc từ settings.data (node_autopause_pct mặc định 95 · gap 20 (5–50) · min 5) · gõ nhầm < 50% → 50%", '_ap = {"t": 0.0, "cfg": (95.0, 20.0, 5.0)}' in CPD
+   and 'pct = num("node_autopause_pct", 95.0, 0, 100)' in CPD and 'if 0 < pct < 50: pct = 50.0' in CPD and 'num("node_autopause_gap", 20.0, 5, 50)' in CPD)
+ck("mức nhận lại không âm (ngưỡng − khoảng giảm < 0 → 0%): máy chủ vẫn tự nhận lại được khi trống hẳn",
+   P({"auto": True, "at": T0, "low": T0}, False, False, 0.0, T0 + 300, 30, 40, 5)[1] == "resume" and CPD.count("back = max(0.0, pct - gap)") == 2)
+
+# ============================================================== 28/11c · 🤖 đổi Android gặp máy chủ đầy → giữ đơn, máy chủ nào trống trước nhận
+print("28/11c · đổi Android: máy chủ đầy → GIỮ ĐƠN chờ chỗ trống (không hoàn / tạo lại ngay) · máy chủ giữ máy cũ vẫn nhận lại dù đang ngừng")
+import datetime as _dt
+G4 = {"time": _tm, "datetime": _dt, "SW_WAIT_MIN": 20.0, "NODE_ID": "win-a", "PRIMARY": True, "_sw_said": {}, "_own_sw": {},
+      "_nodes": {"rows": []}, "_FULL": {"until": 0.0}, "_busy_said": {"t": 0.0}}
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name in ("now", "parse_dt", "node_sells", "sw_waiting", "sw_hope", "own_switch", "refund_unserved", "claim"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G4)
+S = {"others": (False, False), "aok": True, "refunds": [], "sb": [], "old_node": "win-a", "enabled": True, "room": True}
+def _sb4(method, path, body=None, extra=None):
+    S["sb"].append((method, path, body))
+    if method == "GET" and path.startswith("cloud_phones?id=eq.OLD"): return [{"node": S["old_node"]}]
+    return [{"id": "x"}] if method == "PATCH" else []
+G4.update(age_s=lambda row: row.get("_age", 0), others_for=lambda row: S["others"], android_ok=lambda row: S["aok"], live_nodes=lambda: [],
+          refund=lambda row, msg: S["refunds"].append(msg), notify=lambda t: None, sb=_sb4, node_enabled=lambda: S["enabled"],
+          handover=lambda row: False, busy_boot=lambda: "", sick_why=lambda: "", want=lambda row: (4.0, 4.0),
+          local_load=lambda: (0.5, 8.0 if S["room"] else 0.0, 8.0 if S["room"] else 0.0))
+def R(**k): return dict({"id": "NEW-1", "status": "pending", "android": "15", "replaces": "OLD-1", "_age": 100}, **k)
+def run(f, *a):
+    with contextlib.redirect_stdout(io.StringIO()): return f(*a)
+def reset(**k): S.update(others=(False, False), aok=True, refunds=[], sb=[], old_node="win-a", enabled=True, room=True); S.update(k); G4["_own_sw"].clear(); G4["_nodes"]["rows"] = []
+fresh = _dt.datetime.now().astimezone().isoformat(); stale = (_dt.datetime.now().astimezone() - _dt.timedelta(minutes=10)).isoformat()
+reset(others=(True, False))
+ck("đơn đổi Android 100 giây, các máy chủ Android 15 đều đầy (còn chạy) → GIỮ ĐƠN", run(G4["sw_waiting"], R()) is True)
+ck("đơn thường (không phải đổi Android) → không giữ (như cũ)", run(G4["sw_waiting"], R(replaces=None)) is False)
+ck("đã giữ đủ 20 phút (SWITCH_WAIT_MIN) → thôi giữ, về cách cũ", run(G4["sw_waiting"], R(_age=20 * 60)) is False)
+reset(aok=False)
+ck("không máy chủ nào bán Android 15 còn báo cáo → không giữ (khách khỏi chờ vô ích)", run(G4["sw_waiting"], R()) is False)
+G4["_nodes"]["rows"] = [{"id": "win-b", "enabled": False, "androids": "12,15", "updated_at": fresh}]
+ck("máy chủ Android 15 đang NGỪNG nhận máy (tự ngừng vì đầy) nhưng còn báo cáo → vẫn giữ (nó tự nhận lại khi bớt đầy)", run(G4["sw_waiting"], R()) is True)
+G4["_nodes"]["rows"] = [{"id": "win-b", "enabled": True, "androids": "15", "updated_at": stale}, {"id": "win-c", "enabled": True, "androids": "9", "updated_at": fresh}]
+ck("máy chủ Android 15 mất kết nối 10 phút / máy chủ chỉ bán Android 9 → không tính", run(G4["sw_hope"], R()) is False)
+reset(others=(True, False))
+run(G4["refund_unserved"], R())
+ck("máy chủ chính: đơn đổi Android chưa ai nhận vì đầy → KHÔNG hoàn / tạo lại lúc 90 giây", S["refunds"] == [], S["refunds"])
+run(G4["refund_unserved"], R(replaces=None))
+ck("… đơn thường cùng lúc → hoàn như cũ ('Máy chủ đã đầy, chưa tạo được máy')", S["refunds"] == ["Máy chủ đã đầy, chưa tạo được máy"], S["refunds"])
+S["refunds"] = []; run(G4["refund_unserved"], R(_age=21 * 60))
+ck("… đơn đổi Android quá 20 phút vẫn không có chỗ → hoàn / web tự tạo lại như cũ", S["refunds"] == ["Máy chủ đã đầy, chưa tạo được máy"], S["refunds"])
+reset(enabled=False)
+ok_c = run(G4["claim"], R())
+ck("máy chủ đang Ngừng nhận máy mà máy CŨ của khách ở chính nó (vừa xoá → trống chỗ) → vẫn nhận lại đơn đổi Android",
+   ok_c is True and any(m == "PATCH" and b == {"node": "win-a"} for m, _, b in S["sb"]), S["sb"])
+reset(enabled=False, old_node="win-z")
+ck("… máy cũ ở máy chủ khác → máy chủ đang ngừng KHÔNG nhận", run(G4["claim"], R()) is False and not any(m == "PATCH" for m, _, _ in S["sb"]), S["sb"])
+reset(enabled=False)
+ck("… đơn thường → máy chủ đang ngừng KHÔNG nhận (như cũ)", run(G4["claim"], R(replaces=None)) is False and not any(m == "PATCH" for m, _, _ in S["sb"]))
+reset(enabled=False, room=False, others=(True, False))
+ck("… máy cũ ở đây nhưng không đủ chỗ cho bản mới → không nhận, đơn vẫn được giữ (không hoàn)", run(G4["claim"], R()) is False and S["refunds"] == [], (S["sb"], S["refunds"]))
+reset(enabled=False)
+run(G4["own_switch"], R()); run(G4["own_switch"], R())
+ck("own_switch đọc máy cũ 1 lần / 2 phút / đơn (không hỏi web mỗi 3 giây)", sum(1 for m, p_, _ in S["sb"] if m == "GET") == 1, S["sb"])
+ck("tạo máy báo HẾT CHỖ (mã 2) với đơn đổi Android → TRẢ ĐƠN (node trống) cho máy chủ khác thay vì hoàn",
+   "sw = sw_waiting(row)" in CPD and "if (age_s(row) < 600 and others_for(row)[1]) or sw:" in CPD and '" (đổi Android: giữ đơn chờ có chỗ)" if sw else ""' in CPD)
+ck("máy chủ chính gọi sw_waiting trước khi hoàn đơn chưa ai nhận · máy chủ đang ngừng chỉ nhận own_switch",
+   "if sw_waiting(row, live): return" in CPD and "if not node_enabled() and not own_switch(row): return False" in CPD)
+ck("thời gian giữ (SWITCH_WAIT_MIN 20) < hạn tự huỷ đơn treo (STUCK_MIN 30)", 'SW_WAIT_MIN = max(0.0, _f("SWITCH_WAIT_MIN", 20))' in CPD and 'STUCK_MIN = max(0.0, _f("STUCK_MIN", 30))' in CPD)
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
